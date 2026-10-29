@@ -8,10 +8,16 @@ namespace GameOfLife.Api.Tests;
 [Collection(PostgresFixture.CollectionName)]
 public sealed class BoardIdTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
+    // A well-formed id. No board needs to exist under it for a request that fails before the lookup.
+    private const string AnyId = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+
     private readonly HttpClient _client = factory.CreateClient();
 
     [Theory]
     [InlineData("GET", "")]
+    [InlineData("POST", "/next")]
+    [InlineData("GET", "/ahead/1")]
+    [InlineData("POST", "/ahead/1")]
     public async Task UnknownId_Returns404ProblemDetails(string method, string endpoint)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), TestSupport.BoardPath(Guid.NewGuid(), endpoint));
@@ -24,6 +30,9 @@ public sealed class BoardIdTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
     [Theory]
     [InlineData("GET", "/not-a-guid")]
+    [InlineData("POST", "/not-a-guid/next")]
+    [InlineData("GET", $"/{AnyId}/ahead/two")]
+    [InlineData("POST", $"/{AnyId}/ahead/two")]
     public async Task IdOrNThatCannotBeRead_Returns400ProblemDetails(string method, string endpoint)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), $"{TestSupport.BoardsPath}{endpoint}");

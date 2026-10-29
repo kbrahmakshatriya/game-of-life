@@ -48,6 +48,58 @@ public sealed class PostgresBoardRepositoryTests(PostgresFixture postgres) : IAs
     }
 
     [Fact]
-    public async Task Find_UnknownId_ReturnsNull() =>
+    public async Task FindAndLock_UnknownId_ReturnNull()
+    {
         Assert.Null(await Repository.FindAsync(Guid.NewGuid(), Timeout));
+        Assert.Null(await Repository.LockAsync(Guid.NewGuid(), Timeout));
+    }
+
+    [Fact]
+    public async Task Lock_ThenSave_ReplacesTheBoard()
+    {
+        StoredBoard added = await Repository.AddAsync(Board.Parse(TestBoards.VerticalBlinker), Timeout);
+        StoredBoard settled = added with
+        {
+            Generation = 7,
+            Status = BoardStatus.Oscillator,
+            Period = 2,
+            Board = Board.Parse(TestBoards.HorizontalBlinker),
+        };
+
+        await using (IBoardLock? locked = await Repository.LockAsync(added.Id, Timeout))
+        {
+            Assert.NotNull(locked);
+            Assert.Equal(added, locked.Board);
+            await locked.SaveAsync(settled, Timeout);
+        }
+
+        Assert.Equal(settled, await Repository.FindAsync(added.Id, Timeout));
+    }
+
+    [Fact]
+    public async Task Lock_DisposedWithoutSaving_LeavesTheBoardAsItWasAndReleasesIt()
+    {
+        StoredBoard added = await Repository.AddAsync(Board.Parse(TestBoards.Block), Timeout);
+
+        await using (IBoardLock? locked = await Repository.LockAsync(added.Id, Timeout))
+        {
+            Assert.NotNull(locked);
+        }
+
+        // Released, so the lock can be taken again at once instead of waiting until the timeout fails the test.
+        await using IBoardLock? again = await Repository.LockAsync(added.Id, Timeout);
+        Assert.Equal(added, again?.Board);
+    }
+
+    [Fact]
+    public async Task Table_RejectsAnActiveBoardWithAPeriod()
+    {
+        StoredBoard added = await Repository.AddAsync(Board.Parse(TestBoards.Block), Timeout);
+        await using IBoardLock? locked = await Repository.LockAsync(added.Id, Timeout);
+        Assert.NotNull(locked);
+
+        // The table's CHECK constraint keeps period set exactly when the board has settled.
+        var exception = await Assert.ThrowsAsync<PostgresException>(() => locked.SaveAsync(added with { Period = 3 }, Timeout));
+        Assert.Equal(PostgresErrorCodes.CheckViolation, exception.SqlState);
+    }
 }

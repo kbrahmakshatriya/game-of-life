@@ -22,6 +22,7 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Theory]
+    [InlineData("GET", "/next")] // next changes the board, so it only accepts POST
     [InlineData("DELETE", "")]
     public async Task UnsupportedMethod_Returns405ProblemDetails(string method, string endpoint)
     {
@@ -46,6 +47,8 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
             {
                 ["/api/v1/boards"] = ["post"],
                 ["/api/v1/boards/{id}"] = ["get"],
+                ["/api/v1/boards/{id}/next"] = ["post"],
+                ["/api/v1/boards/{id}/ahead/{n}"] = ["get", "post"],
             },
             operations);
         // The document must describe enums the way the API writes them: by name.
@@ -58,6 +61,7 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
     [Theory]
     [InlineData("GameOfLife:MaxRows", "0")]
     [InlineData("GameOfLife:MaxColumns", "-1")]
+    [InlineData("GameOfLife:MaxGenerations", "0")]
     public void InvalidLimitSetting_StopsTheAppFromStarting(string key, string value)
     {
         using WebApplicationFactory<Program> misconfigured = factory.WithSettings((key, value));

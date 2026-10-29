@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 
 using GameOfLife.Api.Persistence;
+using GameOfLife.Core;
 
 namespace GameOfLife.Api.Boards;
 
@@ -38,4 +39,17 @@ public sealed record BoardResponse(
     public static BoardResponse From(StoredBoard stored) => new(
         stored.Id, stored.Generation, stored.Status, stored.Period,
         stored.Board.Rows, stored.Board.Columns, stored.Board.LiveCellCount, CellMatrix.FromBoard(stored.Board));
+}
+
+/// <summary>A generation computed ahead of a board's current one. Nothing about the board is saved.</summary>
+/// <param name="Id">The board's id.</param>
+/// <param name="Generation">The generation shown: the board's current generation plus n.</param>
+/// <param name="Rows">The number of rows.</param>
+/// <param name="Columns">The number of columns.</param>
+/// <param name="LiveCells">How many cells are alive.</param>
+/// <param name="Cells">The grid as a list of rows, top row first, with 1 for live and 0 for dead.</param>
+public sealed record PreviewResponse(Guid Id, long Generation, int Rows, int Columns, int LiveCells, int[][] Cells)
+{
+    public static PreviewResponse From(Guid id, long generation, Board board) =>
+        new(id, generation, board.Rows, board.Columns, board.LiveCellCount, CellMatrix.FromBoard(board));
 }

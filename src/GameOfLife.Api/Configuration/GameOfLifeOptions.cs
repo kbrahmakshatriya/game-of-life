@@ -17,4 +17,9 @@ public sealed class GameOfLifeOptions
 
     [Range(1, 10_000)]
     public int MaxColumns { get; set; }
+
+    // The most generations one request computes: the largest n for "n generations ahead", and how far the final
+    // state search looks before giving up.
+    [Range(1, 1_000_000)]
+    public int MaxGenerations { get; set; }
 }

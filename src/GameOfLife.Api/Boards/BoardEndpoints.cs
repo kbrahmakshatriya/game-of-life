@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using GameOfLife.Api.Configuration;
 using GameOfLife.Api.Persistence;
 using GameOfLife.Core;
@@ -32,6 +34,31 @@ public static class BoardEndpoints
             .WithDescription("Returns the board's current generation and status.")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        boards.MapPost("/{id}/next", NextAsync)
+            .WithName("AdvanceBoard")
+            .WithSummary("Advance the board one generation")
+            .WithDescription(
+                "Computes the next generation from the current one and saves it as the board's current generation.")
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        boards.MapGet("/{id}/ahead/{n}", PreviewAheadAsync)
+            .WithName("PreviewAhead")
+            .WithSummary("Preview the board n generations ahead")
+            .WithDescription(
+                "Computes the generation n after the board's current one, where n is from 0 to the configured " +
+                "maximum. Nothing is saved.")
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        boards.MapPost("/{id}/ahead/{n}", JumpAheadAsync)
+            .WithName("JumpAhead")
+            .WithSummary("Advance the board n generations")
+            .WithDescription(
+                "Computes the generation n after the board's current one, where n is from 1 to the configured " +
+                "maximum, and saves it as the board's current generation.")
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return endpoints;
     }
 
@@ -55,6 +82,51 @@ public static class BoardEndpoints
         StoredBoard? stored = await repository.FindAsync(id, cancellationToken);
         return stored is null ? BoardNotFound(id) : TypedResults.Ok(BoardResponse.From(stored));
     }
+
+    private static async Task<Results<Ok<BoardResponse>, ProblemHttpResult>> NextAsync(
+        Guid id, BoardService service, CancellationToken cancellationToken) =>
+        ToHttpResult(id, await service.AdvanceAsync(id, 1, cancellationToken));
+
+    private static async Task<Results<Ok<PreviewResponse>, ProblemHttpResult>> PreviewAheadAsync(
+        Guid id, int n, IBoardRepository repository, IOptions<GameOfLifeOptions> options,
+        CancellationToken cancellationToken)
+    {
+        int maxGenerations = options.Value.MaxGenerations;
+        if (n < 0 || n > maxGenerations)
+        {
+            return ValidationFailed(new FieldError("n", $"n must be from 0 to {maxGenerations}; it is {n}."));
+        }
+
+        StoredBoard? current = await repository.FindAsync(id, cancellationToken);
+        if (current is null)
+        {
+            return BoardNotFound(id);
+        }
+
+        Board ahead = Simulation.Advance(current.Board, n, cancellationToken);
+        return TypedResults.Ok(PreviewResponse.From(id, current.Generation + n, ahead));
+    }
+
+    private static async Task<Results<Ok<BoardResponse>, ProblemHttpResult>> JumpAheadAsync(
+        Guid id, int n, BoardService service, IOptions<GameOfLifeOptions> options,
+        CancellationToken cancellationToken)
+    {
+        int maxGenerations = options.Value.MaxGenerations;
+        if (n < 1 || n > maxGenerations)
+        {
+            return ValidationFailed(new FieldError("n", $"n must be from 1 to {maxGenerations}; it is {n}."));
+        }
+
+        return ToHttpResult(id, await service.AdvanceAsync(id, n, cancellationToken));
+    }
+
+    private static Results<Ok<BoardResponse>, ProblemHttpResult> ToHttpResult(
+        Guid id, BoardUpdateResult result) => result switch
+        {
+            BoardUpdateResult.Succeeded succeeded => TypedResults.Ok(BoardResponse.From(succeeded.Board)),
+            BoardUpdateResult.NotFound => BoardNotFound(id),
+            _ => throw new UnreachableException($"No response is defined for {result}."),
+        };
 
     // Written as a problem result rather than TypedResults.ValidationProblem, which in .NET 8 bypasses the problem
     // details service and so would leave out the trace id that every other error carries.
