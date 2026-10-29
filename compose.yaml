@@ -1,0 +1,36 @@
+# The API and its PostgreSQL database: `docker compose up -d --build`, then open http://localhost:8080/swagger.
+# To run the API with `dotnet run` instead, start only the database: `docker compose up -d postgres`.
+# The credentials are for local development only and match appsettings.Development.json. A real deployment supplies
+# its own connection string, for example in the environment variable ConnectionStrings__GameOfLife.
+services:
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__GameOfLife: Host=postgres;Port=5432;Database=gameoflife;Username=gameoflife;Password=gameoflife
+      Swagger__Enabled: "true"
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gameoflife
+      POSTGRES_USER: gameoflife
+      POSTGRES_PASSWORD: gameoflife
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameoflife -d gameoflife"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

@@ -1,0 +1,8 @@
+# The image is built from the sources alone. Build output from the host would clash with the image's own.
+**/bin/
+**/obj/
+.git/
+.vs/
+.vscode/
+.idea/
+tests/

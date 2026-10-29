@@ -107,7 +107,7 @@ app.UseStatusCodePages();
 app.UseRequestTimeouts();
 app.UseRateLimiter();
 
-// Off by default, on in Development.
+// Off by default, on in Development; compose.yaml turns it on so the containerized API can be explored too.
 if (app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.UseSwagger();

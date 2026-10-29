@@ -1,0 +1,54 @@
+# Sample requests for the REST client in Visual Studio, Rider or VS Code.
+# Either start PostgreSQL with `docker compose up -d postgres` and the API with `dotnet run --project src/GameOfLife.Api`,
+# or start both with `docker compose up -d --build` and change baseUrl to http://localhost:8080.
+
+@baseUrl = http://localhost:5180
+
+### Liveness: the process answers
+GET {{baseUrl}}/health/live
+
+### Readiness: the database answers too
+GET {{baseUrl}}/health/ready
+
+### Upload a vertical blinker: saved as generation 0, status Active
+# @name upload
+POST {{baseUrl}}/api/v1/boards
+Content-Type: application/json
+
+{
+  "cells": [
+    [0, 1, 0],
+    [0, 1, 0],
+    [0, 1, 0]
+  ]
+}
+
+### The board's current generation and status
+@boardId = {{upload.response.body.$.id}}
+GET {{baseUrl}}/api/v1/boards/{{boardId}}
+
+### Advance one generation and save it: the blinker turns horizontal (generation 1)
+POST {{baseUrl}}/api/v1/boards/{{boardId}}/next
+
+### Preview ten generations after the current one, without saving
+GET {{baseUrl}}/api/v1/boards/{{boardId}}/ahead/10
+
+### Jump ten generations ahead and save (generation 11)
+POST {{baseUrl}}/api/v1/boards/{{boardId}}/ahead/10
+
+### Find and save the final state: an oscillator with a period of 2
+POST {{baseUrl}}/api/v1/boards/{{boardId}}/final
+
+### A settled board cannot advance: 409
+POST {{baseUrl}}/api/v1/boards/{{boardId}}/next
+
+### A rejected upload: rows of different lengths
+POST {{baseUrl}}/api/v1/boards
+Content-Type: application/json
+
+{
+  "cells": [
+    [0, 1, 0],
+    [1, 1]
+  ]
+}
