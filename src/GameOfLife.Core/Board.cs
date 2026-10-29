@@ -15,6 +15,8 @@ namespace GameOfLife.Core;
 /// <para>
 /// Two boards are equal when they have the same dimensions and the same live cells. Cells are stored as bits, 64 to a
 /// <see cref="ulong"/>, so a board takes one bit per cell, and comparing or hashing boards handles 64 cells at a time.
+/// <see cref="Simulation.FindFinalState"/> relies on both: it keeps every generation it computes and looks each new one
+/// up among them.
 /// </para>
 /// </remarks>
 public sealed class Board : IEquatable<Board>
