@@ -38,8 +38,10 @@ public static class BoardEndpoints
             .WithName("AdvanceBoard")
             .WithSummary("Advance the board one generation")
             .WithDescription(
-                "Computes the next generation from the current one and saves it as the board's current generation.")
-            .ProducesProblem(StatusCodes.Status404NotFound);
+                "Computes the next generation from the current one and saves it as the board's current generation. " +
+                "Returns 409 once the board has settled.")
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         boards.MapGet("/{id}/ahead/{n}", PreviewAheadAsync)
             .WithName("PreviewAhead")
@@ -55,9 +57,21 @@ public static class BoardEndpoints
             .WithSummary("Advance the board n generations")
             .WithDescription(
                 "Computes the generation n after the board's current one, where n is from 1 to the configured " +
-                "maximum, and saves it as the board's current generation.")
+                "maximum, and saves it as the board's current generation. Returns 409 once the board has settled.")
             .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        boards.MapPost("/{id}/final", FinalAsync)
+            .WithName("SettleBoard")
+            .WithSummary("Find and save the final state")
+            .WithDescription(
+                "Runs the board forward from its current generation until a generation repeats an earlier one, then " +
+                "saves the first generation of that repeating cycle as the board's final state and marks the board " +
+                "settled. Returns 422, saving nothing, if no generation repeats within the configured maximum. A " +
+                "board that has already settled is returned unchanged.")
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         return endpoints;
     }
@@ -120,11 +134,17 @@ public static class BoardEndpoints
         return ToHttpResult(id, await service.AdvanceAsync(id, n, cancellationToken));
     }
 
+    private static async Task<Results<Ok<BoardResponse>, ProblemHttpResult>> FinalAsync(
+        Guid id, BoardService service, CancellationToken cancellationToken) =>
+        ToHttpResult(id, await service.SettleAsync(id, cancellationToken));
+
     private static Results<Ok<BoardResponse>, ProblemHttpResult> ToHttpResult(
         Guid id, BoardUpdateResult result) => result switch
         {
             BoardUpdateResult.Succeeded succeeded => TypedResults.Ok(BoardResponse.From(succeeded.Board)),
             BoardUpdateResult.NotFound => BoardNotFound(id),
+            BoardUpdateResult.AlreadySettled settled => BoardAlreadySettled(settled.Board),
+            BoardUpdateResult.DidNotSettle notSettled => DidNotSettle(notSettled.MaxGenerations),
             _ => throw new UnreachableException($"No response is defined for {result}."),
         };
 
@@ -140,4 +160,22 @@ public static class BoardEndpoints
         statusCode: StatusCodes.Status404NotFound,
         title: "Board not found",
         detail: $"No board has the id {id}.");
+
+    private static ProblemHttpResult BoardAlreadySettled(StoredBoard board) => TypedResults.Problem(
+        statusCode: StatusCodes.Status409Conflict,
+        title: "Board has settled",
+        detail: $"The board settled at generation {board.Generation} as {board.Status}, so it cannot advance. " +
+            "GET the board to see its final state.",
+        extensions: new Dictionary<string, object?>
+        {
+            ["boardStatus"] = board.Status.ToString(),
+            ["generation"] = board.Generation,
+        });
+
+    private static ProblemHttpResult DidNotSettle(int maxGenerations) => TypedResults.Problem(
+        statusCode: StatusCodes.Status422UnprocessableEntity,
+        title: "Board did not settle",
+        detail: $"No generation repeated an earlier one within {maxGenerations} generations of the current one, " +
+            "the most this service computes for one request. The board was not changed.",
+        extensions: new Dictionary<string, object?> { ["maxGenerations"] = maxGenerations });
 }

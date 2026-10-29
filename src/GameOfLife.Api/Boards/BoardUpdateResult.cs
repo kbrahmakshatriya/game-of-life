@@ -17,4 +17,10 @@ public abstract record BoardUpdateResult
 
     /// <summary>No board has the id.</summary>
     public sealed record NotFound : BoardUpdateResult;
+
+    /// <summary>The board has settled, so it cannot advance. <paramref name="Board"/> is its final state.</summary>
+    public sealed record AlreadySettled(StoredBoard Board) : BoardUpdateResult;
+
+    /// <summary>No generation repeated within <paramref name="MaxGenerations"/>, so nothing was saved.</summary>
+    public sealed record DidNotSettle(int MaxGenerations) : BoardUpdateResult;
 }

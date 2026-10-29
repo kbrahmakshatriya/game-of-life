@@ -44,6 +44,18 @@ public sealed class AheadEndpointTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal(TestSupport.Cells(TestBoards.HorizontalBlinker), stored.Cells);
     }
 
+    [Fact]
+    public async Task Preview_OnASettledBoard_StillWorks()
+    {
+        BoardResponse uploaded = await _client.UploadAsync(TestBoards.VerticalBlinker);
+        _ = await _client.PostForBoardAsync(TestSupport.BoardPath(uploaded.Id, "/final"));
+
+        PreviewResponse preview = await _client.GetJsonAsync<PreviewResponse>(TestSupport.BoardPath(uploaded.Id, "/ahead/1"));
+
+        Assert.Equal(1, preview.Generation);
+        Assert.Equal(TestSupport.Cells(TestBoards.HorizontalBlinker), preview.Cells);
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(1_001)]
@@ -85,6 +97,17 @@ public sealed class AheadEndpointTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal(8, jumped.Generation);
         Assert.Equal(preview.Generation, jumped.Generation);
         Assert.Equal(preview.Cells, jumped.Cells);
+    }
+
+    [Fact]
+    public async Task Jump_OnASettledBoard_Returns409()
+    {
+        BoardResponse uploaded = await _client.UploadAsync(TestBoards.Block);
+        _ = await _client.PostForBoardAsync(TestSupport.BoardPath(uploaded.Id, "/final"));
+
+        using HttpResponseMessage response = await _client.PostAsync(TestSupport.BoardPath(uploaded.Id, "/ahead/3"), content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
     [Theory]

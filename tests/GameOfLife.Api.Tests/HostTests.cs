@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 
+using GameOfLife.Api.Boards;
+
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Options;
 
@@ -22,7 +24,8 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Theory]
-    [InlineData("GET", "/next")] // next changes the board, so it only accepts POST
+    [InlineData("GET", "/next")] // next and final change the board, so they only accept POST
+    [InlineData("GET", "/final")]
     [InlineData("DELETE", "")]
     public async Task UnsupportedMethod_Returns405ProblemDetails(string method, string endpoint)
     {
@@ -32,6 +35,20 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task Responses_UseCamelCaseNamesWriteEnumsByNameAndLeaveOutAnAbsentPeriod()
+    {
+        BoardResponse uploaded = await _client.UploadAsync(TestBoards.Block);
+        using JsonDocument active = JsonDocument.Parse(await _client.GetStringAsync(TestSupport.BoardPath(uploaded.Id)));
+        using HttpResponseMessage response = await _client.PostAsync(TestSupport.BoardPath(uploaded.Id, "/final"), content: null);
+        using JsonDocument settled = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(["id", "generation", "status", "rows", "columns", "liveCells", "cells"], PropertyNames(active));
+        Assert.Equal(["id", "generation", "status", "period", "rows", "columns", "liveCells", "cells"], PropertyNames(settled));
+        Assert.Equal("Active", active.RootElement.GetProperty("status").GetString());
+        Assert.Equal("StillLife", settled.RootElement.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -49,6 +66,7 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 ["/api/v1/boards/{id}"] = ["get"],
                 ["/api/v1/boards/{id}/next"] = ["post"],
                 ["/api/v1/boards/{id}/ahead/{n}"] = ["get", "post"],
+                ["/api/v1/boards/{id}/final"] = ["post"],
             },
             operations);
         // The document must describe enums the way the API writes them: by name.
@@ -69,4 +87,7 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var exception = Assert.Throws<OptionsValidationException>(() => misconfigured.CreateClient());
         Assert.Contains(key.Split(':')[1], exception.Message, StringComparison.Ordinal);
     }
+
+    private static string[] PropertyNames(JsonDocument json) =>
+        json.RootElement.EnumerateObject().Select(property => property.Name).ToArray();
 }

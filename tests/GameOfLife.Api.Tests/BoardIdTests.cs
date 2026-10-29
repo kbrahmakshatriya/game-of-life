@@ -18,6 +18,7 @@ public sealed class BoardIdTests(ApiFactory factory) : IClassFixture<ApiFactory>
     [InlineData("POST", "/next")]
     [InlineData("GET", "/ahead/1")]
     [InlineData("POST", "/ahead/1")]
+    [InlineData("POST", "/final")]
     public async Task UnknownId_Returns404ProblemDetails(string method, string endpoint)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), TestSupport.BoardPath(Guid.NewGuid(), endpoint));
@@ -31,6 +32,7 @@ public sealed class BoardIdTests(ApiFactory factory) : IClassFixture<ApiFactory>
     [Theory]
     [InlineData("GET", "/not-a-guid")]
     [InlineData("POST", "/not-a-guid/next")]
+    [InlineData("POST", "/not-a-guid/final")]
     [InlineData("GET", $"/{AnyId}/ahead/two")]
     [InlineData("POST", $"/{AnyId}/ahead/two")]
     public async Task IdOrNThatCannotBeRead_Returns400ProblemDetails(string method, string endpoint)

@@ -46,4 +46,21 @@ public sealed class NextEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.Equal(TestSupport.Cells(TestBoards.VerticalBlinker), second.Cells);
         Assert.Equal(TestSupport.Cells(TestBoards.HorizontalBlinker), third.Cells);
     }
+
+    [Fact]
+    public async Task Next_OnASettledBoard_Returns409AndLeavesTheBoardUnchanged()
+    {
+        BoardResponse uploaded = await _client.UploadAsync(TestBoards.Block);
+        BoardResponse settled = await _client.PostForBoardAsync(TestSupport.BoardPath(uploaded.Id, "/final"));
+
+        using HttpResponseMessage response = await _client.PostAsync(TestSupport.BoardPath(uploaded.Id, "/next"), content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await TestSupport.ReadAsync<ProblemDetails>(response);
+        Assert.Equal("Board has settled", problem.Title);
+        Assert.Equal("StillLife", ((JsonElement)problem.Extensions["boardStatus"]!).GetString());
+        BoardResponse stored = await _client.GetJsonAsync<BoardResponse>(TestSupport.BoardPath(uploaded.Id));
+        Assert.Equal(settled.Generation, stored.Generation);
+        Assert.Equal(BoardStatus.StillLife, stored.Status);
+    }
 }
