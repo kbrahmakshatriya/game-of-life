@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The domain: the board and the rules that evolve it. No dependencies on HTTP, storage or other packages. -->
+  <PropertyGroup>
+    <!-- Every public type and member must be documented; a missing comment fails the build. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

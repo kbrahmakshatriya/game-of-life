@@ -1,0 +1,12 @@
+<Project>
+  <!-- Central package management: projects reference packages without versions; versions live here. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <!-- The mtp-off flavour runs under VSTest, which is what `dotnet test` uses on the .NET 8 SDK. -->
+    <PackageVersion Include="xunit.v3.mtp-off" Version="4.0.2" />
+  </ItemGroup>
+</Project>
