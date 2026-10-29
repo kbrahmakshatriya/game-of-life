@@ -3,9 +3,12 @@ using System.Text.Json.Serialization;
 
 using GameOfLife.Api.Boards;
 using GameOfLife.Api.Configuration;
+using GameOfLife.Api.Health;
 using GameOfLife.Api.Persistence;
 
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Timeouts;
+using Microsoft.AspNetCore.HttpLogging;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
@@ -50,9 +53,22 @@ builder.Services.AddOptions<RequestTimeoutOptions>()
         TimeoutStatusCode = StatusCodes.Status504GatewayTimeout,
     });
 
+// Liveness says only that the process answers; readiness also needs the database. Keeping the database out of
+// liveness means a database outage makes instances stop taking traffic, not get restarted, which would not help.
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", failureStatus: null, tags: ["ready"], timeout: TimeSpan.FromSeconds(3));
+
 // Kestrel reads only its endpoints from the Kestrel section by itself; this binds the rest, including
 // Limits.MaxRequestBodySize, which turns away larger uploads with 413 before they are read into memory.
 builder.Services.Configure<KestrelServerOptions>(builder.Configuration.GetSection("Kestrel"));
+
+// One log line per request: method, path, status and duration.
+builder.Services.AddHttpLogging(logging =>
+{
+    logging.LoggingFields = HttpLoggingFields.RequestMethod | HttpLoggingFields.RequestPath
+        | HttpLoggingFields.ResponseStatusCode | HttpLoggingFields.Duration;
+    logging.CombineLogs = true;
+});
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -81,6 +97,8 @@ WebApplication app = builder.Build();
 // Creating the table when it is missing lets the app start against an empty database with no setup step.
 await BoardsTable.EnsureCreatedAsync(app.Services.GetRequiredService<NpgsqlDataSource>(), CancellationToken.None);
 
+app.UseHttpLogging();
+
 // An unhandled exception becomes a 500 problem response that reveals no internal details. Error statuses written
 // without a body, such as a 404 for an unknown route or a 400 for malformed JSON, get a problem body too.
 app.UseExceptionHandler();
@@ -96,6 +114,8 @@ if (app.Configuration.GetValue<bool>("Swagger:Enabled"))
     app.UseSwaggerUI();
 }
 
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.MapBoardEndpoints();
 
 app.Run();
