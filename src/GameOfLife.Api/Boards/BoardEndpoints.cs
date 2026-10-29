@@ -34,6 +34,7 @@ public static class BoardEndpoints
             .WithDescription("Returns the board's current generation and status.")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // The endpoints below simulate generations, so they share the cap on simulations running at once.
         boards.MapPost("/{id}/next", NextAsync)
             .WithName("AdvanceBoard")
             .WithSummary("Advance the board one generation")
@@ -41,7 +42,9 @@ public static class BoardEndpoints
                 "Computes the next generation from the current one and saves it as the board's current generation. " +
                 "Returns 409 once the board has settled.")
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+            .RequireRateLimiting(SimulationLimit.PolicyName);
 
         boards.MapGet("/{id}/ahead/{n}", PreviewAheadAsync)
             .WithName("PreviewAhead")
@@ -50,7 +53,9 @@ public static class BoardEndpoints
                 "Computes the generation n after the board's current one, where n is from 0 to the configured " +
                 "maximum. Nothing is saved.")
             .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+            .RequireRateLimiting(SimulationLimit.PolicyName);
 
         boards.MapPost("/{id}/ahead/{n}", JumpAheadAsync)
             .WithName("JumpAhead")
@@ -60,7 +65,9 @@ public static class BoardEndpoints
                 "maximum, and saves it as the board's current generation. Returns 409 once the board has settled.")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+            .RequireRateLimiting(SimulationLimit.PolicyName);
 
         boards.MapPost("/{id}/final", FinalAsync)
             .WithName("SettleBoard")
@@ -71,7 +78,9 @@ public static class BoardEndpoints
                 "settled. Returns 422, saving nothing, if no generation repeats within the configured maximum. A " +
                 "board that has already settled is returned unchanged.")
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+            .RequireRateLimiting(SimulationLimit.PolicyName);
 
         return endpoints;
     }

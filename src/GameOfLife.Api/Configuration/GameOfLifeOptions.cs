@@ -22,4 +22,15 @@ public sealed class GameOfLifeOptions
     // state search looks before giving up.
     [Range(1, 1_000_000)]
     public int MaxGenerations { get; set; }
+
+    // How many simulations (next, ahead and final requests) may run at once; more are turned away with 503. Each one
+    // uses a CPU core and holds a database connection while it runs, so this stays below the connection pool's size,
+    // which is 100 unless the connection string says otherwise.
+    [Range(1, 100)]
+    public int MaxConcurrentSimulations { get; set; }
+
+    // How long a request may take before it is abandoned with 504, including any time spent waiting for a board that
+    // another request is changing.
+    [Range(1, 3_600)]
+    public int RequestTimeoutSeconds { get; set; }
 }

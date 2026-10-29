@@ -19,7 +19,9 @@ public sealed class ConcurrencyTests(ApiFactory factory) : IClassFixture<ApiFact
     public async Task ConcurrentNexts_ForOneBoard_EachSaveTheirOwnGeneration()
     {
         const int Requests = 25;
-        HttpClient client = _client;
+        // Room for every request at once: this test is about the row lock, not the cap on simulations.
+        using WebApplicationFactory<Program> roomy = factory.WithSettings(("GameOfLife:MaxConcurrentSimulations", $"{Requests}"));
+        using HttpClient client = roomy.CreateClient();
         BoardResponse uploaded = await client.UploadAsync(TestBoards.GliderOnTenByTen);
         string next = TestSupport.BoardPath(uploaded.Id, "/next");
 

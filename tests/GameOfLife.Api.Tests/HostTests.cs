@@ -4,6 +4,8 @@ using System.Text.Json;
 using GameOfLife.Api.Boards;
 
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace GameOfLife.Api.Tests;
@@ -80,12 +82,25 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
     [InlineData("GameOfLife:MaxRows", "0")]
     [InlineData("GameOfLife:MaxColumns", "-1")]
     [InlineData("GameOfLife:MaxGenerations", "0")]
+    [InlineData("GameOfLife:MaxConcurrentSimulations", "0")]
+    [InlineData("GameOfLife:MaxConcurrentSimulations", "101")]
+    [InlineData("GameOfLife:RequestTimeoutSeconds", "0")]
     public void InvalidLimitSetting_StopsTheAppFromStarting(string key, string value)
     {
         using WebApplicationFactory<Program> misconfigured = factory.WithSettings((key, value));
 
         var exception = Assert.Throws<OptionsValidationException>(() => misconfigured.CreateClient());
         Assert.Contains(key.Split(':')[1], exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UploadSizeLimit_IsReadFromConfiguration()
+    {
+        // The in-memory test server does not enforce Kestrel's limits, so check that the setting reaches Kestrel.
+        _ = factory.CreateClient();
+
+        var kestrel = factory.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value;
+        Assert.Equal(1_048_576, kestrel.Limits.MaxRequestBodySize);
     }
 
     private static string[] PropertyNames(JsonDocument json) =>

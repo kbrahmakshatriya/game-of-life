@@ -5,6 +5,11 @@ using GameOfLife.Api.Boards;
 using GameOfLife.Api.Configuration;
 using GameOfLife.Api.Persistence;
 
+using Microsoft.AspNetCore.Http.Timeouts;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Options;
+
 using Npgsql;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -28,6 +33,26 @@ builder.Services.AddSingleton(services =>
 });
 builder.Services.AddSingleton<IBoardRepository, PostgresBoardRepository>();
 builder.Services.AddScoped<BoardService>();
+
+// At most MaxConcurrentSimulations simulations run at once; see SimulationLimit.
+builder.Services.AddRateLimiter(_ => { });
+builder.Services.AddOptions<RateLimiterOptions>()
+    .Configure<IOptions<GameOfLifeOptions>>((limiter, settings) =>
+        SimulationLimit.AddPolicy(limiter, settings.Value.MaxConcurrentSimulations));
+
+// Every request is abandoned with 504 after RequestTimeoutSeconds. Abandoning cancels the request's token, which stops
+// a simulation between generations and a database command that is waiting for a board's lock.
+builder.Services.AddRequestTimeouts();
+builder.Services.AddOptions<RequestTimeoutOptions>()
+    .Configure<IOptions<GameOfLifeOptions>>((timeouts, settings) => timeouts.DefaultPolicy = new RequestTimeoutPolicy
+    {
+        Timeout = TimeSpan.FromSeconds(settings.Value.RequestTimeoutSeconds),
+        TimeoutStatusCode = StatusCodes.Status504GatewayTimeout,
+    });
+
+// Kestrel reads only its endpoints from the Kestrel section by itself; this binds the rest, including
+// Limits.MaxRequestBodySize, which turns away larger uploads with 413 before they are read into memory.
+builder.Services.Configure<KestrelServerOptions>(builder.Configuration.GetSection("Kestrel"));
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -60,6 +85,9 @@ await BoardsTable.EnsureCreatedAsync(app.Services.GetRequiredService<NpgsqlDataS
 // without a body, such as a 404 for an unknown route or a 400 for malformed JSON, get a problem body too.
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+
+app.UseRequestTimeouts();
+app.UseRateLimiter();
 
 // Off by default, on in Development.
 if (app.Configuration.GetValue<bool>("Swagger:Enabled"))
