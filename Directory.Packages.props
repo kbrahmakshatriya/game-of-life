@@ -3,8 +3,16 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
+  <ItemGroup Label="Api">
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.3.1" />
+  </ItemGroup>
   <ItemGroup Label="Testing">
+    <!-- Hosts the API in memory for the integration tests; its version follows the ASP.NET Core 8 runtime. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.33" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <!-- Starts a throwaway PostgreSQL in Docker for the tests that need a database. -->
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <!-- The mtp-off flavour runs under VSTest, which is what `dotnet test` uses on the .NET 8 SDK. -->
     <PackageVersion Include="xunit.v3.mtp-off" Version="4.0.2" />
