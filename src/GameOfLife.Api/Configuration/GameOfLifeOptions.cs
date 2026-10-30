@@ -24,8 +24,8 @@ public sealed class GameOfLifeOptions
     public int MaxGenerations { get; set; }
 
     // How many simulations (next, ahead and final requests) may run at once; more are turned away with 503. Each one
-    // uses a CPU core and holds a database connection while it runs, so this stays below the connection pool's size,
-    // which is 100 unless the connection string says otherwise.
+    // uses a CPU core while it runs, and every one except a preview also holds a database connection, so this stays
+    // below the connection pool's size, which is 100 unless the connection string says otherwise.
     [Range(1, 100)]
     public int MaxConcurrentSimulations { get; set; }
 

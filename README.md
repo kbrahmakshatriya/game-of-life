@@ -315,7 +315,7 @@ Settings live in [`appsettings.json`](src/GameOfLife.Api/appsettings.json). Envi
 |---|---|---|
 | `GameOfLife:MaxRows`, `GameOfLife:MaxColumns` | 256 | The largest board accepted (1 to 10,000). |
 | `GameOfLife:MaxGenerations` | 1000 | The largest `n` for `ahead`, and how far `final` searches (1 to 1,000,000). |
-| `GameOfLife:MaxConcurrentSimulations` | 8 | How many `next`, `ahead` and `final` requests run at once; more get 503. Each holds a database connection while it runs, so the setting is limited to 1 to 100, the size of Npgsql's default pool. |
+| `GameOfLife:MaxConcurrentSimulations` | 8 | How many `next`, `ahead` and `final` requests run at once; more get 503. Every one except a preview holds a database connection while it runs, so the setting is limited to 1 to 100, the size of Npgsql's default pool. |
 | `GameOfLife:RequestTimeoutSeconds` | 10 | How long any request may run before it gets 504 (1 to 3,600). |
 | `Kestrel:Limits:MaxRequestBodySize` | 1048576 | The largest request body; larger ones get 413. A full 256 x 256 board is about 130 KB. |
 | `ConnectionStrings:GameOfLife` | none | The PostgreSQL connection string. Development and `compose.yaml` set one; any other environment must provide it. |

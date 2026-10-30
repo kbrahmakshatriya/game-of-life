@@ -3,9 +3,11 @@ using Microsoft.AspNetCore.RateLimiting;
 namespace GameOfLife.Api.Boards;
 
 /// <summary>
-/// Caps how many simulations run at once. Next, ahead and final compute generations on the request's thread and hold
-/// a database connection while they do, so the cap bounds both CPU use and connections. Requests over the cap are
-/// turned away at once with 503 instead of queuing, so a burst cannot pile up behind slow simulations.
+/// Caps how many simulations run at once. Next, ahead and final compute generations on the request's thread, so the
+/// cap bounds CPU use. Next, jumps and final also hold a database connection while they compute, the one that holds
+/// the board's row lock, so it bounds those connections too; a preview returns its connection before it computes.
+/// Requests over the cap are turned away at once with 503 instead of queuing, so a burst cannot pile up behind slow
+/// simulations.
 /// </summary>
 public static partial class SimulationLimit
 {
