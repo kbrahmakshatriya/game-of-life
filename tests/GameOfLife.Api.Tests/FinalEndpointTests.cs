@@ -90,4 +90,28 @@ public sealed class FinalEndpointTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal(0, stored.Generation);
         Assert.Equal(BoardStatus.Active, stored.Status);
     }
+
+    [Fact]
+    public async Task Final_AfterJumpingAhead_SearchesOnFromTheNewGeneration()
+    {
+        // The glider settles at generation 31, so a search of 10 generations only sees it from generation 22 on.
+        using WebApplicationFactory<Program> limited = factory.WithSettings(("GameOfLife:MaxGenerations", "10"));
+        using HttpClient client = limited.CreateClient();
+        BoardResponse uploaded = await client.UploadAsync(TestBoards.GliderOnTenByTen);
+        string final = TestSupport.BoardPath(uploaded.Id, "/final");
+
+        using HttpResponseMessage fromTheStart = await client.PostAsync(final, content: null);
+        for (int jump = 0; jump < 3; jump++)
+        {
+            await client.PostForBoardAsync(TestSupport.BoardPath(uploaded.Id, "/ahead/10"));
+        }
+
+        BoardResponse settled = await client.PostForBoardAsync(final);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, fromTheStart.StatusCode);
+        // Generation 30 comes before the cycle, so the search still finds the generation the cycle starts at.
+        Assert.Equal(31, settled.Generation);
+        Assert.Equal(BoardStatus.StillLife, settled.Status);
+        Assert.Equal(1, settled.Period);
+    }
 }

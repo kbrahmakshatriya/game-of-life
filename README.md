@@ -205,6 +205,8 @@ flowchart TD
 
 A fingerprint is a SHA-256 hash of the grid's cells, so the search needs little memory however large the board. Equal grids always have equal fingerprints, so a repeat is never missed; two different grids would only be mistaken for a repeat if their hashes collided, which is too unlikely to matter. Only the current generation is stored, so the cycle cannot be found to start before the generation where `final` was called. For example, a blinker advanced to generation 1 settles at generation 1, even though generation 0 was already part of its cycle.
 
+A board that needs more than `MaxGenerations` generations to settle gets `422` and is left exactly as it was, so calling `final` again repeats the same search with the same result. Each search starts from the board's current generation, so jumping the board ahead and then calling `final` reaches further. An R-pentomino on a 68 x 68 board, for example, does not settle within 1,000 generations of generation 0, but after `POST /api/v1/boards/{id}/ahead/1000`, `final` finds that it settles at generation 1,163. The jump is saved like any other change, so the board cannot go back to its earlier generations.
+
 ## Architecture
 
 The solution has two projects plus tests:
@@ -295,6 +297,7 @@ Compose starts the API only after PostgreSQL reports healthy, and restarts eithe
 | Boards move forward: `next`, jumps and `final` save the new state | Never change the upload, and compute every generation from generation 0 | "Next" reads as stepping a simulation, and the requirement to survive restarts matters most when a board has progress to lose. |
 | `POST` for changes, `GET` for reads, including previews | `GET` for everything named "Get" in the requirements | HTTP treats a `GET` as safe to repeat, and caches, proxies and retry logic rely on that. A request that changes a board cannot be a `GET`. |
 | One row per board, overwritten on every change | Keep every generation | The requirements need only the current state, and a history would grow with every `next`. |
+| Cells stored as text, one line per row with `O` for live and `.` for dead | JSON in a `json` or `jsonb` column | It is smaller and faster to store than JSON: a random 256 x 256 board takes about 14 KB, against 21 KB as `json` and 81 KB as `jsonb`, which is also about five times slower to save and load. It reads as a picture in `psql`. JSON would let SQL look inside a board and check its shape, but boards are only ever read and written whole. |
 | A row lock (`SELECT ... FOR UPDATE`) for every change | A version check with retries; PostgreSQL advisory locks | The database enforces a row lock for every writer and releases it automatically. Retries could redo up to a second of work on a conflict. Advisory locks only constrain code that remembers to take them, and they need hashed keys, pinned connections and explicit unlocking. |
 | No separate wait limit for the lock | A `lock_timeout` with its own error | The request timeout already bounds every wait, and the simulation cap bounds how many requests can be waiting, so one mechanism covers both. |
 | Turn excess simulations away with 503 | Queue them | It puts a hard ceiling on CPU use and on database connections held, so a burst cannot pile up. |
@@ -405,6 +408,7 @@ Dockerfile                  Two-stage build; runs as a non-root user
 - **Simulations run inside the request.** That is fine within the configured limits, but much larger boards or generation counts should move to background jobs that clients poll.
 - **Retried changes advance twice.** Idempotency keys, or an `If-Match` header carrying the expected generation, would make retries of `next` and jumps safe.
 - **No history.** Only the current generation is stored, so a board cannot be rewound, and `final` cannot report a cycle that started before it was called.
+- **Boards are kept forever.** Nothing deletes a board, so the table only grows. A `DELETE` endpoint, or a retention job that removes boards whose `updated_at` is old, would bound it.
 - **Memory grows with the search.** `final` keeps a fingerprint of every grid it computes, about 200 bytes each. Brent's algorithm would make that memory constant.
 - **Out of scope.** There is no authentication, per-client rate limiting or TLS. TLS usually ends at a proxy in front of the service.
 - **Very large or sparse boards.** A sparse representation, or the HashLife algorithm, would scale far beyond a dense grid.
