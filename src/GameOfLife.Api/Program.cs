@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 
 using GameOfLife.Api.Boards;
 using GameOfLife.Api.Configuration;
+using GameOfLife.Api.Errors;
 using GameOfLife.Api.Health;
 using GameOfLife.Api.Persistence;
 
@@ -83,6 +84,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 // JSON, gets a 400 in every environment; by default Development throws an exception for it instead.
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
     context.ProblemDetails.Extensions["traceId"] = Activity.Current?.Id ?? context.HttpContext.TraceIdentifier);
+// A request that fails because the database cannot be reached gets 503 with Retry-After rather than 500.
+builder.Services.AddExceptionHandler<DatabaseUnavailableHandler>();
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 
 builder.Services.AddEndpointsApiExplorer();

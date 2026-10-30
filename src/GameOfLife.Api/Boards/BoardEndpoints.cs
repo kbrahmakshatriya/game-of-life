@@ -26,13 +26,15 @@ public static class BoardEndpoints
             .WithName("UploadBoard")
             .WithSummary("Upload a board")
             .WithDescription("Stores the board as generation 0 of a new, active board and returns it with its id.")
-            .ProducesValidationProblem();
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         boards.MapGet("/{id}", GetBoardAsync)
             .WithName(GetBoardRouteName)
             .WithSummary("Get a board")
             .WithDescription("Returns the board's current generation and status.")
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         // The endpoints below simulate generations, so they share the cap on simulations running at once.
         boards.MapPost("/{id}/next", NextAsync)

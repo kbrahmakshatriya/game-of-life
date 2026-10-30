@@ -66,7 +66,7 @@ Routes are versioned under `/api/v1`, so a breaking change could ship as `v2` al
 | `GET` | `/health/live` | Reports that the process is up | 200 |
 | `GET` | `/health/ready` | Reports that the database answers too | 200, 503 |
 
-Any board endpoint can also return 400 for an id that is not a GUID, and 504 if it runs past the request timeout. Requests that change a board are `POST`s; requests that only read are `GET`s, so they are safe to repeat.
+Any board endpoint can also return 400 for an id that is not a GUID, 503 if the database cannot be reached, and 504 if it runs past the request timeout. Requests that change a board are `POST`s; requests that only read are `GET`s, so they are safe to repeat.
 
 ### Requests and responses
 
@@ -164,7 +164,7 @@ A rejected upload names the field that is wrong. The validator reports the first
 | 413 | The request body is larger than 1 MiB. |
 | 415 | The body was not sent as `application/json`. |
 | 422 | `final` found no repeat within `maxGenerations`, which the response includes. Nothing was saved. |
-| 503 | Too many simulations are running (the response includes `Retry-After: 1`), or the database is down (`/health/ready` only). |
+| 503 | Too many simulations are running (the response includes `Retry-After: 1`), or the database cannot be reached (`Retry-After: 5`). |
 | 504 | The request ran longer than the timeout, 10 seconds by default. Nothing was saved. |
 | 500 | An unexpected failure. No internal details are returned. |
 
@@ -340,7 +340,7 @@ At the defaults, the slowest request takes about a second of CPU and the timeout
 
 - **Crashes and restarts.** Every change is one transaction, so it is either committed or never happened. Committed generations survive a restart of the app (there is a test for it) and `docker compose kill api` (checked by hand).
 - **Abandoned work.** A request cut short by the timeout, a disconnect or a crash saves nothing, and its computation stops. The request's cancellation token is checked between generations, and it also cancels any SQL that is waiting for a lock.
-- **Database outages.** `/health/ready` returns 503, so a load balancer stops sending traffic. `/health/live` deliberately does not check the database, because restarting a healthy API would not bring the database back.
+- **Database outages.** `/health/ready` returns 503, so a load balancer stops sending traffic. `/health/live` deliberately does not check the database, because restarting a healthy API would not bring the database back. Board requests that arrive during the outage get 503 with `Retry-After` rather than 500, and the API recovers by itself once the database is back.
 - **Retries.** `next` and jumps are not idempotent: retrying after a lost response advances the board again, so `GET` the board first. `final` can be repeated safely.
 - **Logs.** The app writes one line per request (method, path, status and duration), one line for each board created, advanced or settled, and a warning when a request is turned away. In production the logs are JSON with the trace and span ids attached. In Development they are single human-readable lines.
 - **Trace ids.** An error's `traceId` is a W3C trace context id. Its 32-character middle part is the `TraceId` on the matching log lines.
@@ -393,6 +393,7 @@ src/
     Boards/                 Endpoints, request and response types, validation, BoardService, simulation limit
     Persistence/            IBoardRepository, the PostgreSQL implementation, the table definition
     Configuration/          GameOfLifeOptions, the validated limits
+    Errors/                 Error responses: 503 when the database cannot be reached
     Health/                 The database readiness check
     Program.cs              Service registration and the request pipeline
 tests/
