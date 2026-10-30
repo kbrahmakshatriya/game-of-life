@@ -11,6 +11,7 @@ A REST API for [Conway's Game of Life](https://en.wikipedia.org/wiki/Conway%27s_
 - [Limits and configuration](#limits-and-configuration)
 - [Resilience and observability](#resilience-and-observability)
 - [Development](#development)
+- [How this was built](#how-this-was-built)
 - [Limitations and next steps](#limitations-and-next-steps)
 
 ## Quick start
@@ -43,7 +44,7 @@ curl -s -X POST http://localhost:8080/api/v1/boards/$id/next      # 409: a settl
 | Requirement | How it is met |
 |---|---|
 | Upload a board state and return a unique id | `POST /api/v1/boards` validates the grid and stores it as generation 0. It returns `201 Created` with the board's id and a `Location` header. |
-| Get the next state | `POST /api/v1/boards/{id}/next` computes the next generation and saves it as the board's current state. |
+| Get the next state | `POST /api/v1/boards/{id}/next` computes the next generation and saves it as the board's current state. To see the next state without changing anything, use `GET /api/v1/boards/{id}/ahead/1`. |
 | Get the state N generations ahead | `GET /api/v1/boards/{id}/ahead/{n}` previews that generation without saving anything. `POST` on the same URL jumps the board there and saves it. |
 | Get the final state, or an error if there is none within a reasonable number of iterations | `POST /api/v1/boards/{id}/final` finds the cycle the board settles into and saves it. If no generation repeats within 1,000 generations, it returns `422`, including the limit, and saves nothing. |
 | Persist boards so they survive restarts and crashes | Boards are stored in PostgreSQL, and every change is a single transaction. Tests restart the app, and the container has been killed outright, without losing a board. |
@@ -405,6 +406,16 @@ tests/
 compose.yaml                The API and PostgreSQL for local use
 Dockerfile                  Two-stage build; runs as a non-root user
 ```
+
+## How this was built
+
+I built this with Claude Code, Anthropic's AI coding assistant, and every commit says so in its `Co-Authored-By` line. I used it as a pair programmer: it proposed options and wrote code, and I chose between the options and asked for evidence before accepting a change.
+
+- **Decisions name their alternatives.** The [design decisions](#design-decisions) table records each choice, what else was considered and why, including choices I revisited, such as storing the board as an `int[][]` instead of bits.
+- **Measure before deciding.** The run times and storage sizes in this README were measured: run times on Release builds, and storage sizes and write times on PostgreSQL 16. A first benchmark said the `int[][]` board made `final` 14% slower; a longer warm-up showed no difference, so the README reports the second result.
+- **Check behavior on the running system.** Questions such as "what does `final` return when it is called twice?" were answered by running the API against PostgreSQL and reading the stored rows, and the answers became tests and the notes in [How boards evolve](#how-boards-evolve).
+- **Review independently, then verify.** Before submitting, a separate Claude agent reviewed the code against the exercise's requirements without seeing earlier conclusions. Each finding was checked before acting on it: a suspected 500 was reproduced with a failing test first, and a claim about PostgreSQL permissions was tried on a real database. Some suggestions were declined, with the reasons recorded, such as redesigning boards so that they never change.
+- **Small steps, each explained.** The history builds the service in layers: the rules, upload and get, advancing, the final state, protection, health checks and logs, Docker, and the README. Then come the changes that measurements and the review led to. Each commit message says why. The early commits were regrouped into these steps before submission and keep their original dates.
 
 ## Limitations and next steps
 
