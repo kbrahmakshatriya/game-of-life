@@ -36,8 +36,12 @@ public sealed class PostgresBoardRepositoryTests(PostgresFixture postgres) : IAs
     [Fact]
     public async Task Add_ThenFind_ReturnsTheSameBoard()
     {
-        // 9 x 13 cells fill two 64-bit words, so the round trip crosses a word boundary.
-        Board board = Board.Create(9, 13, (row, column) => ((row * 13) + column) % 3 == 0);
+        // Not square and not symmetric, so a mix-up of rows and columns would show.
+        Board board = Board.Parse("""
+            O..O..O
+            .O..O..
+            ..O..OO
+            """);
 
         StoredBoard added = await Repository.AddAsync(board, Timeout);
         StoredBoard? found = await Repository.FindAsync(added.Id, Timeout);

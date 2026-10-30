@@ -5,29 +5,11 @@ using GameOfLife.Core;
 namespace GameOfLife.Api.Boards;
 
 /// <summary>
-/// Converts between <see cref="Board"/> and the API's cell matrix: a list of rows, top row first, each a list of cells
-/// with 1 for live and 0 for dead.
+/// Checks the cell matrix of an upload (a list of rows, top row first, each a list of cells with 1 for live and 0 for
+/// dead) and turns it into a <see cref="Board"/>, or says which field is wrong and why.
 /// </summary>
 public static class CellMatrix
 {
-    /// <summary>Returns the cells of <paramref name="board"/> as a matrix of 1s and 0s.</summary>
-    public static int[][] FromBoard(Board board)
-    {
-        ArgumentNullException.ThrowIfNull(board);
-
-        var cells = new int[board.Rows][];
-        for (int row = 0; row < board.Rows; row++)
-        {
-            cells[row] = new int[board.Columns];
-            for (int column = 0; column < board.Columns; column++)
-            {
-                cells[row][column] = board[row, column] ? 1 : 0;
-            }
-        }
-
-        return cells;
-    }
-
     /// <summary>
     /// Creates a board from <paramref name="cells"/> when it is a rectangular matrix of 0s and 1s within the limits.
     /// </summary>
@@ -47,9 +29,8 @@ public static class CellMatrix
             return false;
         }
 
-        // FindError found nothing wrong, so the matrix is non-null and rectangular.
-        int[][] valid = cells!;
-        board = Board.Create(valid.Length, valid[0].Length, (row, column) => valid[row][column] == 1);
+        // FindError found nothing wrong, so the matrix is non-null and rectangular, and FromMatrix accepts it.
+        board = Board.FromMatrix(cells!);
         return true;
     }
 

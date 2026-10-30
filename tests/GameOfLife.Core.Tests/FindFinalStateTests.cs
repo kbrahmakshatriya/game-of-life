@@ -7,7 +7,7 @@ public sealed class FindFinalStateTests
 
     private static readonly Dictionary<string, Board> Examples = new()
     {
-        ["Empty"] = Board.Create(3, 3, (_, _) => false),
+        ["Empty"] = Patterns.Create(3, 3, (_, _) => false),
         ["SingleCell"] = Patterns.Pad("O", 1),
         ["FullThreeByThree"] = Board.Parse("OOO\nOOO\nOOO"),
         ["Diehard"] = Patterns.Place(Patterns.Diehard, 40, 40, 18, 16),
@@ -74,7 +74,7 @@ public sealed class FindFinalStateTests
 
         for (int i = 0; i < BoardCount; i++)
         {
-            Board board = Board.Create(random.Next(1, 8), random.Next(1, 8), (_, _) => random.Next(2) == 1);
+            Board board = Patterns.Create(random.Next(1, 8), random.Next(1, 8), (_, _) => random.Next(2) == 1);
             // Low limits stop some searches before they finish, so both outcomes get compared.
             int maxGenerations = random.Next(1, 40);
 

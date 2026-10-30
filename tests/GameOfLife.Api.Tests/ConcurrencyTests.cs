@@ -38,7 +38,7 @@ public sealed class ConcurrencyTests(ApiFactory factory) : IClassFixture<ApiFact
             BoardResponse stored = await client.GetJsonAsync<BoardResponse>(TestSupport.BoardPath(uploaded.Id));
             Assert.Equal(Requests, stored.Generation);
             Board expected = Simulation.Advance(Board.Parse(TestBoards.GliderOnTenByTen), Requests);
-            Assert.Equal(CellMatrix.FromBoard(expected), stored.Cells);
+            Assert.Equal(expected.ToMatrix(), stored.Cells);
         }
         finally
         {

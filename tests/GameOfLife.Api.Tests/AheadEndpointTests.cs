@@ -80,7 +80,7 @@ public sealed class AheadEndpointTests(ApiFactory factory) : IClassFixture<ApiFa
 
         Board expected = Simulation.Advance(Board.Parse(TestBoards.GliderOnTenByTen), 5);
         Assert.Equal(5, jumped.Generation);
-        Assert.Equal(CellMatrix.FromBoard(expected), jumped.Cells);
+        Assert.Equal(expected.ToMatrix(), jumped.Cells);
         Assert.Equal(jumped.Generation, stored.Generation);
         Assert.Equal(jumped.Cells, stored.Cells);
     }

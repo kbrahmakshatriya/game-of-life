@@ -9,14 +9,6 @@ public sealed class CellMatrixTests
     private const int MaxColumns = 5;
 
     [Fact]
-    public void FromBoard_WritesLiveCellsAsOneAndDeadCellsAsZero()
-    {
-        int[][] expected = [[1, 0, 0], [0, 1, 1]];
-
-        Assert.Equal(expected, CellMatrix.FromBoard(Board.Parse("O..\n.OO")));
-    }
-
-    [Fact]
     public void TryCreateBoard_ValidMatrix_CreatesTheBoard()
     {
         int[][] cells = [[1, 0, 0], [0, 1, 1]];

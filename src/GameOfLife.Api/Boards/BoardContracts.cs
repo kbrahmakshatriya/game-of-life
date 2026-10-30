@@ -38,7 +38,7 @@ public sealed record BoardResponse(
 {
     public static BoardResponse From(StoredBoard stored) => new(
         stored.Id, stored.Generation, stored.Status, stored.Period,
-        stored.Board.Rows, stored.Board.Columns, stored.Board.LiveCellCount, CellMatrix.FromBoard(stored.Board));
+        stored.Board.Rows, stored.Board.Columns, stored.Board.LiveCellCount, stored.Board.ToMatrix());
 }
 
 /// <summary>A generation computed ahead of a board's current one. Nothing about the board is saved.</summary>
@@ -51,5 +51,5 @@ public sealed record BoardResponse(
 public sealed record PreviewResponse(Guid Id, long Generation, int Rows, int Columns, int LiveCells, int[][] Cells)
 {
     public static PreviewResponse From(Guid id, long generation, Board board) =>
-        new(id, generation, board.Rows, board.Columns, board.LiveCellCount, CellMatrix.FromBoard(board));
+        new(id, generation, board.Rows, board.Columns, board.LiveCellCount, board.ToMatrix());
 }

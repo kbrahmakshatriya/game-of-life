@@ -66,5 +66,5 @@ internal static class TestSupport
         ?? throw new InvalidOperationException("The response has no body.");
 
     // The cells of a board written in Board.Parse's format, as the API writes them.
-    public static int[][] Cells(string pattern) => CellMatrix.FromBoard(Board.Parse(pattern));
+    public static int[][] Cells(string pattern) => Board.Parse(pattern).ToMatrix();
 }

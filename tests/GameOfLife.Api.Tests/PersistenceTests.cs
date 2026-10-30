@@ -34,7 +34,7 @@ public sealed class PersistenceTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal(5, activeBoard.Generation);
         Assert.Equal(BoardStatus.Active, activeBoard.Status);
         Board expected = Simulation.Advance(Board.Parse(TestBoards.GliderOnTenByTen), 5);
-        Assert.Equal(CellMatrix.FromBoard(expected), activeBoard.Cells);
+        Assert.Equal(expected.ToMatrix(), activeBoard.Cells);
         Assert.Equal(0, settledBoard.Generation);
         Assert.Equal(BoardStatus.Oscillator, settledBoard.Status);
         Assert.Equal(2, settledBoard.Period);

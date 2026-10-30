@@ -87,11 +87,17 @@ internal static class Patterns
         .O...OOO
         """;
 
+    // A rows x columns board whose cells are alive where isAlive says so. It asks about each cell once, row by row.
+    public static Board Create(int rows, int columns, Func<int, int, bool> isAlive) =>
+        Board.FromMatrix(Enumerable.Range(0, rows)
+            .Select(row => Enumerable.Range(0, columns).Select(column => isAlive(row, column) ? 1 : 0).ToArray())
+            .ToArray());
+
     // A rows x columns board, dead except for the pattern, whose top-left cell is at (top, left).
     public static Board Place(string pattern, int rows, int columns, int top, int left)
     {
         Board shape = Board.Parse(pattern);
-        return Board.Create(rows, columns, (row, column) =>
+        return Create(rows, columns, (row, column) =>
             row >= top && row < top + shape.Rows
             && column >= left && column < left + shape.Columns
             && shape[row - top, column - left]);

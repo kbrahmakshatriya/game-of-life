@@ -189,11 +189,11 @@ A settled board refuses `next` and jumps with `409`. `final` returns it unchange
 
 ### The final state
 
-`final` runs the board forward from its current generation, remembering every grid it computes. The first time a grid repeats, the board will cycle through the same generations forever. The final state is the first generation of that cycle, and the period is the cycle's length.
+`final` runs the board forward from its current generation, remembering a fingerprint of every grid it computes. The first time a grid repeats, the board will cycle through the same generations forever. The final state is the first generation of that cycle, and the period is the cycle's length.
 
 ```mermaid
 flowchart TD
-    lock["Lock the board and read its current generation g"] --> step["Compute the next generation and remember its grid"]
+    lock["Lock the board and read its current generation g"] --> step["Compute the next generation and remember its fingerprint"]
     step --> seen{"Has this grid been seen before?"}
     seen -->|"yes, first at generation c"| save["Save generation c, the period and the status"]
     seen -->|"no"| limit{"Has it computed MaxGenerations generations?"}
@@ -201,7 +201,7 @@ flowchart TD
     limit -->|"yes"| fail["Return 422 and save nothing"]
 ```
 
-Grids are compared exactly. A hash only speeds up the lookup, so a repeat is never reported by mistake. Only the current generation is stored, so the cycle cannot be found to start before the generation where `final` was called. For example, a blinker advanced to generation 1 settles at generation 1, even though generation 0 was already part of its cycle.
+A fingerprint is a SHA-256 hash of the grid's cells, so the search needs little memory however large the board. Equal grids always have equal fingerprints, so a repeat is never missed; two different grids would only be mistaken for a repeat if their hashes collided, which is too unlikely to matter. Only the current generation is stored, so the cycle cannot be found to start before the generation where `final` was called. For example, a blinker advanced to generation 1 settles at generation 1, even though generation 0 was already part of its cycle.
 
 ## Architecture
 
@@ -297,8 +297,8 @@ Compose starts the API only after PostgreSQL reports healthy, and restarts eithe
 | No separate wait limit for the lock | A `lock_timeout` with its own error | The request timeout already bounds every wait, and the simulation cap bounds how many requests can be waiting, so one mechanism covers both. |
 | Turn excess simulations away with 503 | Queue them | It puts a hard ceiling on CPU use and on database connections held, so a burst cannot pile up. |
 | Plain SQL through Npgsql | Entity Framework Core | There is one table and four statements, and the locking is visible in the code. |
-| An immutable board stored as bits, 64 cells to a `ulong` | `int[][]` or `bool[]` | One bit per cell, and equality and hashing handle 64 cells at a time, which makes the final-state search cheap. Immutability makes boards safe to share between threads. |
-| Exact cycle detection with a history of grids | Comparing hash fingerprints; Brent's algorithm | Exact comparison never reports a false repeat. Brent's algorithm needs constant memory but computes two to three times as many generations; at the default limits the history takes about 8 MiB. |
+| An immutable board stored as an `int[][]` of 1s and 0s | Bits packed 64 cells to a `ulong` | It is the same shape as the API's cell matrix, and reading a cell is plain indexing. Bits would take 32 times less memory per board, but only a few boards exist at a time because the final-state search keeps fingerprints, not boards. Copying the matrix in and out keeps boards immutable, which makes them safe to share between threads. |
+| Cycle detection with a history of SHA-256 fingerprints | Keeping every grid and comparing exactly; Brent's algorithm | A fingerprint is 64 characters however large the board, so at the default limits the history takes about 200 KiB; keeping every grid as `int[][]` would take about 256 MiB. A false repeat would need a SHA-256 collision. Brent's algorithm needs constant memory but computes two to three times as many generations. |
 | The final state is the first generation of the cycle | The generation where the repeat was noticed | The response then says where the board settled. |
 | Edges are dead | A grid that wraps around | This is the usual reading of a bounded board. Tests pin it down. |
 | Minimal APIs with typed results | MVC controllers | This is the recommended style for small APIs in .NET 8, and the typed return values describe every response to OpenAPI. |
@@ -321,11 +321,13 @@ Settings live in [`appsettings.json`](src/GameOfLife.Api/appsettings.json). Envi
 
 The defaults come from measurements of the core on an Apple Silicon Mac, with a Release build:
 
-| Board | One generation | 1,000 generations | `final`'s history at 1,000 generations |
+| Board | One generation | `final`, 1,000 generations | `final`'s history at 1,000 generations |
 |---|---|---|---|
-| 64 x 64 | 0.19 ms | 0.2 s | 0.5 MiB |
-| 256 x 256 | 1.1 ms | 1.1 s | 7.8 MiB |
-| 512 x 512 | 4.3 ms | 4.3 s | 31 MiB |
+| 64 x 64 | 0.05 ms | 0.07 s | 0.2 MiB |
+| 256 x 256 | 0.84 ms | 1.0 s | 0.2 MiB |
+| 512 x 512 | 3.5 ms | 4.2 s | 0.2 MiB |
+
+`final` also hashes every generation, which costs about 0.2 ms per generation at 256 x 256. Its history is the same size for every board, because it keeps a 64-character fingerprint per generation rather than the grid.
 
 At the defaults, the slowest request takes about a second of CPU and the timeout allows ten.
 
@@ -401,7 +403,7 @@ Dockerfile                  Two-stage build; runs as a non-root user
 - **Simulations run inside the request.** That is fine within the configured limits, but much larger boards or generation counts should move to background jobs that clients poll.
 - **Retried changes advance twice.** Idempotency keys, or an `If-Match` header carrying the expected generation, would make retries of `next` and jumps safe.
 - **No history.** Only the current generation is stored, so a board cannot be rewound, and `final` cannot report a cycle that started before it was called.
-- **Memory grows with the search.** `final` keeps every grid it computes: up to `MaxGenerations` boards at one bit per cell. Brent's algorithm would make that memory constant.
+- **Memory grows with the search.** `final` keeps a fingerprint of every grid it computes, about 200 bytes each. Brent's algorithm would make that memory constant.
 - **Out of scope.** There is no authentication, per-client rate limiting or TLS. TLS usually ends at a proxy in front of the service.
 - **Very large or sparse boards.** A sparse representation, or the HashLife algorithm, would scale far beyond a dense grid.
 

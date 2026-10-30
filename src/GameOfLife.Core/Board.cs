@@ -1,5 +1,3 @@
-using System.Numerics;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace GameOfLife.Core;
@@ -13,10 +11,9 @@ namespace GameOfLife.Core;
 /// fewer neighbors than one in the middle.
 /// </para>
 /// <para>
-/// Two boards are equal when they have the same dimensions and the same live cells. Cells are stored as bits, 64 to a
-/// <see cref="ulong"/>, so a board takes one bit per cell, and comparing or hashing boards handles 64 cells at a time.
-/// <see cref="Simulation.FindFinalState"/> relies on both: it keeps every generation it computes and looks each new one
-/// up among them.
+/// The cells are kept as a matrix: a list of rows, top row first, each a list of cells with 1 for live and 0 for dead.
+/// <see cref="FromMatrix"/> and <see cref="ToMatrix"/> copy it on the way in and out, so nothing outside the board can
+/// change its cells. Two boards are equal when they have the same dimensions and the same live cells.
 /// </para>
 /// </remarks>
 public sealed class Board : IEquatable<Board>
@@ -27,30 +24,20 @@ public sealed class Board : IEquatable<Board>
     /// <summary>The character that <see cref="Parse"/> reads and <see cref="ToString"/> writes for a dead cell.</summary>
     public const char DeadCell = '.';
 
-    private const int CellsPerWord = 64;
+    // Indexed [row][column]. Every row has the same length, and no row is changed once the board has it.
+    private readonly int[][] _cells;
 
-    // Cell (row, column) is bit number (row * Columns + column), counting across the words in order. Bits past the
-    // last cell are always 0, so equal boards have equal words.
-    private readonly ulong[] _words;
-
-    // Cached because a board never changes and FindFinalState hashes every generation. HashCode is seeded randomly
-    // per process, so this value must never be stored or sent anywhere.
-    private readonly int _hashCode;
-
-    private Board(int rows, int columns, ulong[] words)
+    private Board(int[][] cells)
     {
-        Rows = rows;
-        Columns = columns;
-        _words = words;
-        LiveCellCount = CountLiveCells(words);
-        _hashCode = ComputeHashCode(rows, columns, words);
+        _cells = cells;
+        LiveCellCount = cells.Sum(row => row.Sum());
     }
 
     /// <summary>Gets the number of rows.</summary>
-    public int Rows { get; }
+    public int Rows => _cells.Length;
 
     /// <summary>Gets the number of columns.</summary>
-    public int Columns { get; }
+    public int Columns => _cells[0].Length;
 
     /// <summary>Gets the number of live cells.</summary>
     public int LiveCellCount { get; }
@@ -73,38 +60,53 @@ public sealed class Board : IEquatable<Board>
     }
 
     /// <summary>
-    /// Creates a board of <paramref name="rows"/> by <paramref name="columns"/> cells, calling
-    /// <paramref name="isAlive"/> once for each cell, row by row, to ask whether it is alive.
+    /// Creates a board from <paramref name="cells"/>: a list of rows, top row first, each a list of cells with 1 for
+    /// live and 0 for dead.
     /// </summary>
-    /// <param name="rows">The number of rows, at least 1.</param>
-    /// <param name="columns">The number of columns, at least 1.</param>
-    /// <param name="isAlive">Given a row and a column, returns whether that cell is alive.</param>
-    /// <exception cref="ArgumentOutOfRangeException">A dimension is less than 1.</exception>
-    /// <exception cref="ArgumentException">The board would have more than <see cref="int.MaxValue"/> cells.</exception>
-    public static Board Create(int rows, int columns, Func<int, int, bool> isAlive)
+    /// <remarks>The board keeps a copy, so changing <paramref name="cells"/> afterwards does not change the board.</remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="cells"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// The matrix has no rows or no columns, has a null row or rows of different lengths, or contains a value other
+    /// than 0 or 1.
+    /// </exception>
+    public static Board FromMatrix(int[][] cells)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rows);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
-        ArgumentNullException.ThrowIfNull(isAlive);
-        if ((long)rows * columns > int.MaxValue)
+        ArgumentNullException.ThrowIfNull(cells);
+        if (cells.Length == 0)
         {
-            throw new ArgumentException(
-                $"A board can have at most {int.MaxValue} cells; {rows} rows of {columns} columns is more.");
+            throw new ArgumentException("A board needs at least one row.", nameof(cells));
         }
 
-        var words = new ulong[WordCount(rows * columns)];
-        for (int row = 0; row < rows; row++)
+        for (int row = 0; row < cells.Length; row++)
         {
-            for (int column = 0; column < columns; column++)
+            // The type says a row is never null, but a caller that ignores nullable warnings can still pass one.
+            if (cells[row] is null)
             {
-                if (isAlive(row, column))
-                {
-                    SetAlive(words, (row * columns) + column);
-                }
+                throw new ArgumentException($"Row {row} is null.", nameof(cells));
+            }
+
+            if (cells[row].Length != cells[0].Length)
+            {
+                throw new ArgumentException(
+                    $"Every row needs as many cells as the first, which has {cells[0].Length}; row {row} has {cells[row].Length}.",
+                    nameof(cells));
+            }
+
+            int invalid = cells[row].AsSpan().IndexOfAnyExcept(0, 1);
+            if (invalid >= 0)
+            {
+                throw new ArgumentException(
+                    $"Row {row}, column {invalid} is {cells[row][invalid]}; a cell must be 1 (live) or 0 (dead).",
+                    nameof(cells));
             }
         }
 
-        return new Board(rows, columns, words);
+        if (cells[0].Length == 0)
+        {
+            throw new ArgumentException("A board needs at least one column.", nameof(cells));
+        }
+
+        return new Board(Copy(cells));
     }
 
     /// <summary>
@@ -144,8 +146,15 @@ public sealed class Board : IEquatable<Board>
             }
         }
 
-        return Create(lines.Length, columns, (row, column) => lines[row][column] == LiveCell);
+        return new Board(lines.Select(line => line.Select(cell => cell == LiveCell ? 1 : 0).ToArray()).ToArray());
     }
+
+    /// <summary>
+    /// Returns the cells as a matrix: a list of rows, top row first, each a list of cells with 1 for live and 0 for
+    /// dead.
+    /// </summary>
+    /// <remarks>The matrix is a copy, so changing it does not change the board.</remarks>
+    public int[][] ToMatrix() => Copy(_cells);
 
     /// <summary>
     /// Returns the next generation. Conway's rules apply to every cell at once: a live cell with two or three live
@@ -154,19 +163,17 @@ public sealed class Board : IEquatable<Board>
     /// <remarks>This board is not changed; the next generation is a new board of the same size.</remarks>
     public Board NextGeneration()
     {
-        var next = new ulong[_words.Length];
+        var next = new int[Rows][];
         for (int row = 0; row < Rows; row++)
         {
+            next[row] = new int[Columns];
             for (int column = 0; column < Columns; column++)
             {
-                if (WillBeAlive(IsAlive(row, column), CountLiveNeighbors(row, column)))
-                {
-                    SetAlive(next, (row * Columns) + column);
-                }
+                next[row][column] = WillBeAlive(IsAlive(row, column), CountLiveNeighbors(row, column)) ? 1 : 0;
             }
         }
 
-        return new Board(Rows, Columns, next);
+        return new Board(next);
     }
 
     /// <summary>
@@ -196,16 +203,17 @@ public sealed class Board : IEquatable<Board>
     public bool Equals(Board? other) =>
         ReferenceEquals(this, other)
         || (other is not null
-            && _hashCode == other._hashCode
             && Rows == other.Rows
             && Columns == other.Columns
-            && _words.AsSpan().SequenceEqual(other._words));
+            && _cells.Zip(other._cells).All(rows => rows.First.AsSpan().SequenceEqual(rows.Second)));
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => Equals(obj as Board);
 
+    // Equal boards have the same dimensions and live cell count, so this is a valid hash code, if a weak one. Nothing
+    // keeps boards in a large hash table: Simulation.FindFinalState keeps fingerprints instead.
     /// <inheritdoc />
-    public override int GetHashCode() => _hashCode;
+    public override int GetHashCode() => HashCode.Combine(Rows, Columns, LiveCellCount);
 
     /// <summary>Returns whether two boards have the same dimensions and the same live cells.</summary>
     public static bool operator ==(Board? left, Board? right) => left is null ? right is null : left.Equals(right);
@@ -216,6 +224,8 @@ public sealed class Board : IEquatable<Board>
     // Conway's rule, written B3/S23: a cell is born with exactly 3 live neighbors and survives with 2 or 3.
     private static bool WillBeAlive(bool isAlive, int liveNeighbors) =>
         liveNeighbors == 3 || (isAlive && liveNeighbors == 2);
+
+    private static int[][] Copy(int[][] cells) => cells.Select(row => row.ToArray()).ToArray();
 
     // Counts the live cells among the up to eight that touch (row, column). Only positions on the board are visited,
     // which is what makes everything beyond the edges dead.
@@ -242,33 +252,5 @@ public sealed class Board : IEquatable<Board>
         return count;
     }
 
-    private bool IsAlive(int row, int column) => IsAlive(_words, (row * Columns) + column);
-
-    private static bool IsAlive(ulong[] words, int cell) => (words[cell / CellsPerWord] & Bit(cell)) != 0;
-
-    private static void SetAlive(ulong[] words, int cell) => words[cell / CellsPerWord] |= Bit(cell);
-
-    private static ulong Bit(int cell) => 1UL << (cell % CellsPerWord);
-
-    private static int WordCount(int cells) => (cells / CellsPerWord) + (cells % CellsPerWord == 0 ? 0 : 1);
-
-    private static int CountLiveCells(ulong[] words)
-    {
-        int count = 0;
-        foreach (ulong word in words)
-        {
-            count += BitOperations.PopCount(word);
-        }
-
-        return count;
-    }
-
-    private static int ComputeHashCode(int rows, int columns, ulong[] words)
-    {
-        var hash = new HashCode();
-        hash.Add(rows);
-        hash.Add(columns);
-        hash.AddBytes(MemoryMarshal.AsBytes(words.AsSpan()));
-        return hash.ToHashCode();
-    }
+    private bool IsAlive(int row, int column) => _cells[row][column] == 1;
 }

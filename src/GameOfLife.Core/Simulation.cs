@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace GameOfLife.Core;
 
 /// <summary>Runs a board forward through many generations.</summary>
@@ -38,9 +41,9 @@ public static class Simulation
     /// </returns>
     /// <remarks>
     /// <para>
-    /// Every generation computed is kept and compared exactly, so a repeat is never missed or falsely reported, as
-    /// could happen when comparing hashes alone. The cost is memory: up to <paramref name="maxGenerations"/> boards,
-    /// at one bit per cell.
+    /// Only a fingerprint of each generation is kept: a SHA-256 hash of its cells, 64 characters however large the
+    /// board. Equal boards always have equal fingerprints, so a repeat is never missed. Two different boards could
+    /// only be mistaken for a repeat if their hashes collided, which is too unlikely to matter.
     /// </para>
     /// <para>
     /// A board that stops changing at generation g is only seen to have stopped when generation g + 1 repeats it, so
@@ -54,8 +57,8 @@ public static class Simulation
         ArgumentNullException.ThrowIfNull(board);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxGenerations);
 
-        // Every generation seen so far, with the generation number at which it first appeared.
-        var firstSeenAt = new Dictionary<Board, int> { [board] = 0 };
+        // The fingerprint of every generation seen so far, with the generation number at which it first appeared.
+        var firstSeenAt = new Dictionary<string, int> { [Fingerprint(board)] = 0 };
         Board current = board;
 
         // Counting steps from 0 keeps the loop from overflowing when maxGenerations is int.MaxValue.
@@ -65,14 +68,20 @@ public static class Simulation
             current = current.NextGeneration();
             int generation = step + 1;
 
-            if (firstSeenAt.TryGetValue(current, out int cycleStart))
+            string fingerprint = Fingerprint(current);
+            if (firstSeenAt.TryGetValue(fingerprint, out int cycleStart))
             {
                 return new FinalState(current, cycleStart, generation - cycleStart);
             }
 
-            firstSeenAt.Add(current, generation);
+            firstSeenAt.Add(fingerprint, generation);
         }
 
         return null;
     }
+
+    // A SHA-256 hash of the board's text. Board.Parse reads that text back into the same board, so different boards
+    // have different text, and so different fingerprints unless SHA-256 collides.
+    private static string Fingerprint(Board board) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(board.ToString())));
 }

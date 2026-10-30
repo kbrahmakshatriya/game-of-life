@@ -31,7 +31,7 @@ public sealed class NextGenerationTests
     [InlineData(false, 8, false)]
     public void CenterCell_FollowsConwaysRules(bool isAlive, int liveNeighbors, bool isAliveNext)
     {
-        Board board = Board.Create(3, 3, (row, column) =>
+        Board board = Patterns.Create(3, 3, (row, column) =>
             (row, column) == (1, 1) ? isAlive : CenterNeighbors.Take(liveNeighbors).Contains((row, column)));
 
         Assert.Equal(isAliveNext, board.NextGeneration()[1, 1]);
@@ -125,7 +125,7 @@ public sealed class NextGenerationTests
     [Fact]
     public void EmptyBoard_StaysEmpty()
     {
-        Board empty = Board.Create(4, 5, (_, _) => false);
+        Board empty = Patterns.Create(4, 5, (_, _) => false);
 
         Assert.Equal(empty, empty.NextGeneration());
     }
