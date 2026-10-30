@@ -28,7 +28,7 @@ public sealed class HardeningTests(ApiFactory factory) : IClassFixture<ApiFactor
 
         // This request takes the only simulation slot, then waits for the row lock the test holds.
         Task<HttpResponseMessage> first = client.PostAsync(TestSupport.BoardPath(held.Id, "/next"), content: null);
-        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        await TestSupport.WaitUntilARequestWaitsForALockAsync(factory.ConnectionString);
 
         using HttpResponseMessage second = await client.GetAsync(TestSupport.BoardPath(other.Id, "/ahead/1"));
 

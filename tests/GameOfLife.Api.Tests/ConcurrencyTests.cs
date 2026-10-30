@@ -60,7 +60,7 @@ public sealed class ConcurrencyTests(ApiFactory factory) : IClassFixture<ApiFact
 
         // Another "request" holds the board's lock, so next has to wait for it.
         Task<HttpResponseMessage> next = _client.PostAsync(TestSupport.BoardPath(uploaded.Id, "/next"), content: null);
-        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        await TestSupport.WaitUntilARequestWaitsForALockAsync(factory.ConnectionString);
         Assert.False(next.IsCompleted, "next finished while another transaction held the board's lock.");
 
         // The other request saves generation 5, a horizontal blinker, and releases the lock.

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -8,6 +9,8 @@ using GameOfLife.Core;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+
+using Npgsql;
 
 namespace GameOfLife.Api.Tests;
 
@@ -67,4 +70,27 @@ internal static class TestSupport
 
     // The cells of a board written in Board.Parse's format, as the API writes them.
     public static int[][] Cells(string pattern) => Board.Parse(pattern).ToMatrix();
+
+    // Waits until PostgreSQL reports a session of this test's database waiting for a lock: a request that has passed
+    // the simulation limit and is now blocked on a row lock the test holds. Asking PostgreSQL, instead of sleeping,
+    // keeps the test independent of how fast the machine is.
+    public static async Task WaitUntilARequestWaitsForALockAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+            connection);
+
+        var stopwatch = Stopwatch.StartNew();
+        while ((long)(await command.ExecuteScalarAsync())! == 0)
+        {
+            if (stopwatch.Elapsed > TimeSpan.FromSeconds(10))
+            {
+                throw new TimeoutException("No request started waiting for a lock within 10 seconds.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
+        }
+    }
 }
