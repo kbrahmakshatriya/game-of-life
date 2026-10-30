@@ -53,8 +53,9 @@ public sealed partial class BoardService(
 
     /// <summary>
     /// Runs the board forward from its current generation until a generation repeats an earlier one, then saves the
-    /// first generation of that repeating cycle as the board's final state. A settled board is returned unchanged, so
-    /// repeating the request is harmless.
+    /// first generation of that repeating cycle as the board's final state. The search starts at the current
+    /// generation, so a cycle that began before it is saved as starting there. A settled board is returned unchanged,
+    /// so repeating the request is harmless.
     /// </summary>
     public async Task<BoardUpdateResult> SettleAsync(Guid id, CancellationToken cancellationToken)
     {

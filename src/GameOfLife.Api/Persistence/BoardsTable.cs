@@ -6,6 +6,8 @@ namespace GameOfLife.Api.Persistence;
 /// <remarks>
 /// CREATE TABLE IF NOT EXISTS is enough for one app instance. Several instances starting at the same moment against
 /// an empty database could race to create the table, so a deployment like that should create it in a separate step.
+/// PostgreSQL also checks permission to create tables before it checks whether the table exists, so a role without
+/// that permission cannot start the app even when the table is already there.
 /// </remarks>
 public static class BoardsTable
 {

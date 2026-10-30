@@ -48,7 +48,7 @@ curl -s -X POST http://localhost:8080/api/v1/boards/$id/next      # 409: a settl
 | Get the final state, or an error if there is none within a reasonable number of iterations | `POST /api/v1/boards/{id}/final` finds the cycle the board settles into and saves it. If no generation repeats within 1,000 generations, it returns `422`, including the limit, and saves nothing. |
 | Persist boards so they survive restarts and crashes | Boards are stored in PostgreSQL, and every change is a single transaction. Tests restart the app, and the container has been killed outright, without losing a board. |
 | Clean, modular, testable code | The rules live in a library with no dependencies. HTTP, application logic and storage are separate, and storage sits behind an interface. Unit tests cover the rules and integration tests cover the API. |
-| Error handling and validation | Every error is an RFC 9457 problem response that carries a trace id. A rejected grid names the field that is wrong, for example `cells[1]`, and a body that cannot be read says where reading failed. |
+| Error handling and validation | Every error from a board endpoint is an RFC 9457 problem response that carries a trace id. A rejected grid names the field that is wrong, for example `cells[1]`, and a body that cannot be read says where reading failed. |
 | Production readiness | Limits are configurable and checked at startup. A cap on simultaneous simulations, request timeouts and an upload size limit protect the service. It has health checks and structured logs, and the container runs as a non-root user. |
 
 ## API
@@ -127,7 +127,7 @@ A preview (`GET ahead/{n}`) has the same fields except `status` and `period`, be
 
 ### Errors
 
-Every error is a problem details response (RFC 9457, `application/problem+json`) with a `traceId` that also appears in the server's logs:
+Every error from a board endpoint is a problem details response (RFC 9457, `application/problem+json`) with a `traceId` that also appears in the server's logs. A client whose `Accept` header rules out JSON can get some errors with the right status but without the problem body. The health endpoints answer in plain text (`Healthy` or `Unhealthy`). For example:
 
 ```json
 {
@@ -245,13 +245,14 @@ flowchart LR
 ```mermaid
 flowchart LR
     request(["Request"]) --> log["Request log: one line with status and duration"]
-    log --> errors["Error handling: problem details with a trace id"]
+    log --> errors["Error handling: problem details with a trace id; 503 when the database cannot be reached"]
     errors --> timeout["Timeout: 504 after 10 s"]
     timeout --> limit["Simulation limit: 503 beyond 8 at once"]
-    limit --> endpoint["Endpoint"]
+    limit --> unreadable["Unreadable requests: a 400 that says what is wrong"]
+    unreadable --> endpoint["Endpoint"]
 ```
 
-The request log is outermost, so it records the final status and the full duration. Error handling wraps everything inside it, so a timeout or a rejection also gets a problem body. The simulation limit applies only to `next`, `ahead` and `final`.
+The request log is outermost, so it records the final status and the full duration. Error handling wraps everything inside it, so a timeout or a rejection also gets a problem body. The simulation limit applies only to `next`, `ahead` and `final`. A request the framework cannot read, such as malformed JSON, is answered just before the endpoint, so a client's mistake never reaches the error log.
 
 ### Changing a board
 
@@ -290,7 +291,7 @@ flowchart LR
     dev(["dotnet run or psql"]) -.->|"localhost:5432"| pg
 ```
 
-Compose starts the API only after PostgreSQL reports healthy, and restarts either container if it stops. Both ports are published on the loopback interface only.
+Compose starts the API only after PostgreSQL reports healthy, and restarts either container if it crashes (but not after `docker stop` or `docker kill`). Both ports are published on the loopback interface only.
 
 ## Design decisions
 
@@ -308,7 +309,7 @@ Compose starts the API only after PostgreSQL reports healthy, and restarts eithe
 | Cycle detection with a history of SHA-256 fingerprints | Keeping every grid and comparing exactly; Brent's algorithm | A fingerprint is 64 characters however large the board, so at the default limits the history takes about 200 KiB; keeping every grid as `int[][]` would take about 256 MiB. A false repeat would need a SHA-256 collision. Brent's algorithm needs constant memory but computes two to three times as many generations. |
 | The final state is the first generation of the cycle | The generation where the repeat was noticed | The response then says where the board settled. |
 | Edges are dead | A grid that wraps around | This is the usual reading of a bounded board. Tests pin it down. |
-| Minimal APIs with typed results | MVC controllers | This is the recommended style for small APIs in .NET 8, and the typed return values describe every response to OpenAPI. |
+| Minimal APIs with typed results | MVC controllers | This is the recommended style for small APIs in .NET 8. The typed return values describe each endpoint's success response to OpenAPI, and each endpoint declares its main error responses; the generic ones (400 for an id that cannot be read, 413, 415, 500, 504) are listed in this README instead. |
 | Outcomes as a closed set of result types | Exceptions | "Board not found" and "did not settle" are expected outcomes, not failures. In .NET 8 the exception handler also logs every exception it handles as an error. |
 | The app creates its table at startup | A separate migration step | The app runs against an empty database with no setup. See the [limitations](#limitations-and-next-steps) for multiple instances. |
 
@@ -320,7 +321,7 @@ Settings live in [`appsettings.json`](src/GameOfLife.Api/appsettings.json). Envi
 |---|---|---|
 | `GameOfLife:MaxRows`, `GameOfLife:MaxColumns` | 256 | The largest board accepted (1 to 10,000). |
 | `GameOfLife:MaxGenerations` | 1000 | The largest `n` for `ahead`, and how far `final` searches (1 to 1,000,000). |
-| `GameOfLife:MaxConcurrentSimulations` | 8 | How many `next`, `ahead` and `final` requests run at once; more get 503. Every one except a preview holds a database connection while it runs, so the setting is limited to 1 to 100, the size of Npgsql's default pool. |
+| `GameOfLife:MaxConcurrentSimulations` | 8 | How many `next`, `ahead` and `final` requests run at once; more get 503. Every one except a preview holds a database connection while it runs, so the setting is limited to 1 to 100, the size of Npgsql's default pool. Values near 100 leave few connections for uploads, reads and health checks, which share the pool. |
 | `GameOfLife:RequestTimeoutSeconds` | 10 | How long any request may run before it gets 504 (1 to 3,600). |
 | `Kestrel:Limits:MaxRequestBodySize` | 1048576 | The largest request body; larger ones get 413. A full 256 x 256 board is about 130 KB. |
 | `ConnectionStrings:GameOfLife` | none | The PostgreSQL connection string. Development and `compose.yaml` set one; any other environment must provide it. |
@@ -381,8 +382,8 @@ The tests:
   - gliders and the edges;
   - known results, for example that Diehard dies out at generation 130;
   - a comparison with a brute-force search on 300 random boards.
-- **API integration tests** run the real app in memory with `WebApplicationFactory`, against a real PostgreSQL started by Testcontainers. Each test host gets a database of its own.
-- **Concurrency tests are deterministic.** A test holds a board's row lock itself, which puts a request into a known state: waiting for the lock, timing out, or holding the only simulation slot.
+- **API integration tests** run the real app in memory with `WebApplicationFactory`, against a real PostgreSQL started by Testcontainers. Each test class gets a database of its own.
+- **Concurrency tests are deterministic.** A test holds a board's row lock itself, which puts a request into a known state: waiting for the lock, timing out, or holding the only simulation slot. Before going on, the test asks PostgreSQL until it reports the request waiting for the lock, instead of sleeping.
 - **A restart test** has a second app instance read back boards written by the first.
 - **Every protection was checked by breaking it.** Removing the row lock, the commit, the timeout, the simulation limit, the trace id or the upload limit each makes a test fail.
 
@@ -407,7 +408,7 @@ Dockerfile                  Two-stage build; runs as a non-root user
 
 ## Limitations and next steps
 
-- **Several instances on an empty database.** The app creates its table at startup with `CREATE TABLE IF NOT EXISTS`, which is enough for one instance. Several instances starting at the same moment against an empty database could race to create it, so a deployment like that should create the schema in a separate migration step.
+- **Several instances on an empty database.** The app creates its table at startup with `CREATE TABLE IF NOT EXISTS`, which is enough for one instance. Several instances starting at the same moment against an empty database could race to create it, so a deployment like that should create the schema in a separate migration step. That step also suits a least-privilege database role: PostgreSQL refuses `CREATE TABLE IF NOT EXISTS` to a role without permission to create tables even when the table already exists, so today such a role cannot start the app.
 - **Simulations run inside the request.** That is fine within the configured limits, but much larger boards or generation counts should move to background jobs that clients poll.
 - **Retried changes advance twice.** Idempotency keys, or an `If-Match` header carrying the expected generation, would make retries of `next` and jumps safe.
 - **No history.** Only the current generation is stored, so a board cannot be rewound, and `final` cannot report a cycle that started before it was called.

@@ -77,8 +77,9 @@ public static class BoardEndpoints
             .WithDescription(
                 "Runs the board forward from its current generation until a generation repeats an earlier one, then " +
                 "saves the first generation of that repeating cycle as the board's final state and marks the board " +
-                "settled. Returns 422, saving nothing, if no generation repeats within the configured maximum. A " +
-                "board that has already settled is returned unchanged.")
+                "settled. The search starts at the current generation, so a cycle that began before it is saved as " +
+                "starting there. Returns 422, saving nothing, if no generation repeats within the configured maximum. " +
+                "A board that has already settled is returned unchanged.")
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
