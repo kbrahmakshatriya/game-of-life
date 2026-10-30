@@ -71,6 +71,9 @@ public sealed class HostTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 ["/api/v1/boards/{id}/final"] = ["post"],
             },
             operations);
+        // Upload takes its body as nullable so that an empty one reaches validation, but the document requires one.
+        JsonElement upload = root.GetProperty("paths").GetProperty("/api/v1/boards").GetProperty("post");
+        Assert.True(upload.GetProperty("requestBody").GetProperty("required").GetBoolean());
         // The document must describe enums the way the API writes them: by name.
         JsonElement status = root.GetProperty("components").GetProperty("schemas").GetProperty("BoardStatus");
         Assert.Equal(

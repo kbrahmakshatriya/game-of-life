@@ -1,5 +1,6 @@
 using System.Net;
 
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace GameOfLife.Api.Tests;
@@ -30,12 +31,12 @@ public sealed class BoardIdTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Theory]
-    [InlineData("GET", "/not-a-guid")]
-    [InlineData("POST", "/not-a-guid/next")]
-    [InlineData("POST", "/not-a-guid/final")]
-    [InlineData("GET", $"/{AnyId}/ahead/two")]
-    [InlineData("POST", $"/{AnyId}/ahead/two")]
-    public async Task IdOrNThatCannotBeRead_Returns400ProblemDetails(string method, string endpoint)
+    [InlineData("GET", "/not-a-guid", "not-a-guid")]
+    [InlineData("POST", "/not-a-guid/next", "not-a-guid")]
+    [InlineData("POST", "/not-a-guid/final", "not-a-guid")]
+    [InlineData("GET", $"/{AnyId}/ahead/two", "two")]
+    [InlineData("POST", $"/{AnyId}/ahead/two", "two")]
+    public async Task IdOrNThatCannotBeRead_Returns400NamingTheValue(string method, string endpoint, string value)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), $"{TestSupport.BoardsPath}{endpoint}");
 
@@ -43,5 +44,7 @@ public sealed class BoardIdTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await TestSupport.ReadAsync<ProblemDetails>(response);
+        Assert.Contains($"\"{value}\"", problem.Detail, StringComparison.Ordinal);
     }
 }

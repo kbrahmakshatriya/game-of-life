@@ -5,6 +5,7 @@ using GameOfLife.Api.Boards;
 using GameOfLife.Api.Persistence;
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace GameOfLife.Api.Tests;
@@ -60,6 +61,8 @@ public sealed class UploadBoardTests(ApiFactory factory) : IClassFixture<ApiFact
 
     [Theory]
     [InlineData("""{}""", "cells")]
+    [InlineData("null", "cells")]
+    [InlineData("", "cells")]
     [InlineData("""{"cells":[]}""", "cells")]
     [InlineData("""{"cells":[[0,1],null]}""", "cells[1]")]
     [InlineData("""{"cells":[[0,1],[1]]}""", "cells[1]")]
@@ -93,18 +96,19 @@ public sealed class UploadBoardTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Theory]
-    [InlineData("""{"cells":[[0,1]""")] // malformed JSON
-    [InlineData("""{"cells":[["1","0"]]}""")] // numbers sent as strings
-    [InlineData("""{"cells":[[true,false]]}""")]
-    [InlineData("""{"cells":"OO"}""")]
-    [InlineData("null")]
-    [InlineData("")]
-    public async Task Upload_BodyThatIsNotABoard_Returns400ProblemDetails(string json)
+    [InlineData("""{"cells":[["1","0"]]}""", "The request body at cells[0][0] could not be read")] // numbers as strings
+    [InlineData("""{"cells":[[1,true]]}""", "The request body at cells[0][1] could not be read")]
+    [InlineData("""{"cells":"OO"}""", "The request body at cells could not be read")]
+    [InlineData("""{"cells":[[0,1]""", "could not be read")] // malformed JSON
+    [InlineData("[[0,1],[1,0]]", "The request body could not be read")] // the grid without the object around it
+    public async Task Upload_BodyThatCannotBeRead_Returns400SayingWhere(string json, string detail)
     {
         using HttpResponseMessage response = await _client.PostJsonAsync(TestSupport.BoardsPath, json);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await TestSupport.ReadAsync<ProblemDetails>(response);
+        Assert.Contains(detail, problem.Detail, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -114,6 +118,8 @@ public sealed class UploadBoardTests(ApiFactory factory) : IClassFixture<ApiFact
 
         using HttpResponseMessage response = await _client.PostAsync(TestSupport.BoardsPath, content);
 
+        // Routing turns the request away before the endpoint runs, because the endpoint only accepts JSON.
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 }

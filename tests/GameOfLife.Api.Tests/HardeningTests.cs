@@ -83,7 +83,7 @@ public sealed class HardeningTests(ApiFactory factory) : IClassFixture<ApiFactor
     [Theory]
     [InlineData("/api/v1/boards/00000000-0000-0000-0000-000000000000")] // written by an endpoint: board not found
     [InlineData("/api/v1/boards/00000000-0000-0000-0000-000000000000/ahead/-1")] // a validation error: n is out of range
-    [InlineData("/api/v1/boards/not-a-guid")] // written for an empty 400: the id cannot be read
+    [InlineData("/api/v1/boards/not-a-guid")] // written by the unreadable-request middleware: the id cannot be read
     [InlineData("/api/v1/nothing-here")] // written for an empty 404: no such route
     public async Task ErrorResponses_CarryTheRequestsTraceId(string path)
     {

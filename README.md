@@ -48,7 +48,7 @@ curl -s -X POST http://localhost:8080/api/v1/boards/$id/next      # 409: a settl
 | Get the final state, or an error if there is none within a reasonable number of iterations | `POST /api/v1/boards/{id}/final` finds the cycle the board settles into and saves it. If no generation repeats within 1,000 generations, it returns `422`, including the limit, and saves nothing. |
 | Persist boards so they survive restarts and crashes | Boards are stored in PostgreSQL, and every change is a single transaction. Tests restart the app, and the container has been killed outright, without losing a board. |
 | Clean, modular, testable code | The rules live in a library with no dependencies. HTTP, application logic and storage are separate, and storage sits behind an interface. Unit tests cover the rules and integration tests cover the API. |
-| Error handling and validation | Every error is an RFC 9457 problem response that carries a trace id. A rejected grid names the field that is wrong, for example `cells[1]`. |
+| Error handling and validation | Every error is an RFC 9457 problem response that carries a trace id. A rejected grid names the field that is wrong, for example `cells[1]`, and a body that cannot be read says where reading failed. |
 | Production readiness | Limits are configurable and checked at startup. A cap on simultaneous simulations, request timeouts and an upload size limit protect the service. It has health checks and structured logs, and the container runs as a non-root user. |
 
 ## API
@@ -76,7 +76,7 @@ An upload is a list of rows, top row first. Each row is a list of cells, `1` for
 { "cells": [[0, 1, 0], [0, 1, 0], [0, 1, 0]] }
 ```
 
-Every row must have the same length. A board can have 1 to 256 rows and 1 to 256 columns; both limits are configurable. Cells must be JSON numbers, so `"1"` is rejected rather than converted. The request body may be at most 1 MiB.
+Every row must have the same length. A board can have 1 to 256 rows and 1 to 256 columns; both limits are configurable. Cells must be JSON numbers, so `"1"` is rejected rather than converted, with a message that says where: "The request body at cells[0][0] could not be read." The request body may be at most 1 MiB.
 
 Upload, get, next, jump and final all respond with the board as it is now stored. This is the response to `next` above:
 
@@ -155,9 +155,11 @@ A rejected upload names the field that is wrong. The validator reports the first
 }
 ```
 
+A request that cannot be read at all gets a 400 whose `detail` says why. For malformed JSON or a value of the wrong type, it gives the position where reading failed, such as `cells[0][0]`. For an id or `n` that cannot be read, it quotes the value.
+
 | Status | When |
 |---|---|
-| 400 | The grid is invalid (`errors` names the field), `n` is out of range, the JSON is malformed, or the id is not a GUID. |
+| 400 | The grid is invalid (`errors` names the field), `n` is out of range, the JSON is malformed or has a value of the wrong type, or the id is not a GUID (`detail` says where or which value). |
 | 404 | No board has the id, or no route matches. |
 | 405 | The method is wrong for the route, for example `GET /next`. |
 | 409 | `next` or a jump was sent for a settled board. The response includes `boardStatus` and `generation`. |
@@ -393,7 +395,7 @@ src/
     Boards/                 Endpoints, request and response types, validation, BoardService, simulation limit
     Persistence/            IBoardRepository, the PostgreSQL implementation, the table definition
     Configuration/          GameOfLifeOptions, the validated limits
-    Errors/                 Error responses: 503 when the database cannot be reached
+    Errors/                 Error responses: 503 when the database cannot be reached, 400s that say what is wrong
     Health/                 The database readiness check
     Program.cs              Service registration and the request pipeline
 tests/

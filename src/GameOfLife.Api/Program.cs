@@ -81,18 +81,20 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 // Errors are RFC 9457 problem details. Each one carries the request's trace id, which also appears in the logs, so a
 // client's error report can be matched to what the server logged. A request that cannot be read, such as malformed
-// JSON, gets a 400 in every environment; by default Development throws an exception for it instead.
+// JSON, throws in every environment (by default only Development does), and UseUnreadableRequestProblems below turns
+// the exception into a 400 that says what is wrong.
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
     context.ProblemDetails.Extensions["traceId"] = Activity.Current?.Id ?? context.HttpContext.TraceIdentifier);
 // A request that fails because the database cannot be reached gets 503 with Retry-After rather than 500.
 builder.Services.AddExceptionHandler<DatabaseUnavailableHandler>();
-builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new() { Title = "Game of Life API", Version = "v1" });
     options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{typeof(Program).Assembly.GetName().Name}.xml"));
+    options.RequestBodyFilter<RequiredUploadBody>();
 });
 
 WebApplication app = builder.Build();
@@ -109,6 +111,7 @@ app.UseStatusCodePages();
 
 app.UseRequestTimeouts();
 app.UseRateLimiter();
+app.UseUnreadableRequestProblems();
 
 // Off by default, on in Development; compose.yaml turns it on so the containerized API can be explored too.
 if (app.Configuration.GetValue<bool>("Swagger:Enabled"))

@@ -87,12 +87,13 @@ public static class BoardEndpoints
         return endpoints;
     }
 
+    // The request is null for an empty body or the JSON literal null; the validation then says the cells are missing.
     private static async Task<Results<CreatedAtRoute<BoardResponse>, ProblemHttpResult>> UploadAsync(
-        UploadBoardRequest request, BoardService service, IOptions<GameOfLifeOptions> options,
+        UploadBoardRequest? request, BoardService service, IOptions<GameOfLifeOptions> options,
         CancellationToken cancellationToken)
     {
         GameOfLifeOptions limits = options.Value;
-        if (!CellMatrix.TryCreateBoard(request.Cells, limits.MaxRows, limits.MaxColumns, out Board? board, out FieldError? error))
+        if (!CellMatrix.TryCreateBoard(request?.Cells, limits.MaxRows, limits.MaxColumns, out Board? board, out FieldError? error))
         {
             return ValidationFailed(error);
         }
