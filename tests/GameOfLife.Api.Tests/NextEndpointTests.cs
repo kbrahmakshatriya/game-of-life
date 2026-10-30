@@ -48,6 +48,28 @@ public sealed class NextEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
     }
 
     [Fact]
+    public async Task Next_OnABoardThatNoLongerChanges_KeepsItActiveUntilFinalSettlesIt()
+    {
+        BoardResponse uploaded = await _client.UploadAsync(TestBoards.Block);
+        string next = TestSupport.BoardPath(uploaded.Id, "/next");
+
+        BoardResponse first = await _client.PostForBoardAsync(next);
+        BoardResponse second = await _client.PostForBoardAsync(next);
+        BoardResponse settled = await _client.PostForBoardAsync(TestSupport.BoardPath(uploaded.Id, "/final"));
+
+        // next does not check whether the grid changed: the block comes back the same, one generation later.
+        Assert.Equal(1, first.Generation);
+        Assert.Equal(2, second.Generation);
+        Assert.Equal(BoardStatus.Active, first.Status);
+        Assert.Equal(BoardStatus.Active, second.Status);
+        Assert.Equal(uploaded.Cells, first.Cells);
+        Assert.Equal(uploaded.Cells, second.Cells);
+        // Only final settles it, at the generation it was called at.
+        Assert.Equal(2, settled.Generation);
+        Assert.Equal(BoardStatus.StillLife, settled.Status);
+    }
+
+    [Fact]
     public async Task Next_OnASettledBoard_Returns409AndLeavesTheBoardUnchanged()
     {
         BoardResponse uploaded = await _client.UploadAsync(TestBoards.Block);

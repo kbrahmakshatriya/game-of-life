@@ -185,6 +185,8 @@ stateDiagram-v2
     note right of Active : a preview (GET ahead) never changes the board
 ```
 
+`next` and jumps never settle a board, even when its grid stops changing. A block keeps coming back from `next` the same, one generation later each time and still `Active`, and a blinker keeps flipping. Only `final` finds where a board settles, so call it, or compare the cells with the previous response, to know when to stop.
+
 A settled board refuses `next` and jumps with `409`. `final` returns it unchanged, and previews still work.
 
 ### The final state
