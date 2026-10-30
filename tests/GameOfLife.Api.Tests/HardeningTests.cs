@@ -17,8 +17,10 @@ namespace GameOfLife.Api.Tests;
 [Collection(PostgresFixture.CollectionName)]
 public sealed class HardeningTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    [Fact]
-    public async Task SimulationOverTheLimit_IsTurnedAwayWith503AndRetryAfter()
+    [Theory]
+    [InlineData("application/json")]
+    [InlineData("text/plain")] // no problem body can be written, but the status still says the service is busy
+    public async Task SimulationOverTheLimit_IsTurnedAwayWith503AndRetryAfter(string accept)
     {
         using WebApplicationFactory<Program> limited = factory.WithSettings(("GameOfLife:MaxConcurrentSimulations", "1"));
         using HttpClient client = limited.CreateClient();
@@ -30,12 +32,21 @@ public sealed class HardeningTests(ApiFactory factory) : IClassFixture<ApiFactor
         Task<HttpResponseMessage> first = client.PostAsync(TestSupport.BoardPath(held.Id, "/next"), content: null);
         await TestSupport.WaitUntilARequestWaitsForALockAsync(factory.ConnectionString);
 
-        using HttpResponseMessage second = await client.GetAsync(TestSupport.BoardPath(other.Id, "/ahead/1"));
+        using var request = new HttpRequestMessage(HttpMethod.Get, TestSupport.BoardPath(other.Id, "/ahead/1"));
+        request.Headers.Accept.ParseAdd(accept);
+        using HttpResponseMessage second = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, second.StatusCode);
         Assert.Equal("1", second.Headers.RetryAfter?.ToString());
-        var problem = await TestSupport.ReadAsync<ProblemDetails>(second);
-        Assert.Equal("Too many simulations", problem.Title);
+        if (accept == "application/json")
+        {
+            var problem = await TestSupport.ReadAsync<ProblemDetails>(second);
+            Assert.Equal("Too many simulations", problem.Title);
+        }
+        else
+        {
+            Assert.Equal("text/plain", second.Content.Headers.ContentType?.MediaType);
+        }
 
         // Once the lock is released, the first request finishes normally.
         await rowLock.ReleaseAsync();

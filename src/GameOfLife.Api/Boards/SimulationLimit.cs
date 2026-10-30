@@ -36,7 +36,9 @@ public static partial class SimulationLimit
         ILogger logger = http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(SimulationLimit));
         LogRejected(logger, http.Request.Method, http.Request.Path.Value ?? "");
 
-        await http.RequestServices.GetRequiredService<IProblemDetailsService>().WriteAsync(new ProblemDetailsContext
+        // TryWriteAsync writes nothing when the client accepts no JSON type, where WriteAsync would throw and turn this
+        // 503 into a 500. The status code pages then write a plain-text body instead.
+        await http.RequestServices.GetRequiredService<IProblemDetailsService>().TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = http,
             ProblemDetails =
