@@ -194,17 +194,7 @@ A settled board refuses `next` and jumps with `409`. `final` returns it unchange
 
 ### The final state
 
-`final` runs the board forward from its current generation, remembering a fingerprint of every grid it computes. The first time a grid repeats, the board will cycle through the same generations forever. The final state is the first generation of that cycle, and the period is the cycle's length.
-
-```mermaid
-flowchart TD
-    lock["Lock the board and read its current generation g"] --> step["Compute the next generation and remember its fingerprint"]
-    step --> seen{"Has this grid been seen before?"}
-    seen -->|"yes, first at generation c"| save["Save generation c, the period and the status"]
-    seen -->|"no"| limit{"Has it computed MaxGenerations generations?"}
-    limit -->|"no"| step
-    limit -->|"yes"| fail["Return 422 and save nothing"]
-```
+`final` locks the board, then runs it forward from its current generation, remembering a fingerprint of every grid it computes. The first time a grid repeats, the board will cycle through the same generations forever. The final state is the first generation of that cycle, and the period is the cycle's length; both are saved with the board's new status.
 
 A fingerprint is a SHA-256 hash of the grid's cells, so the search needs little memory however large the board. Equal grids always have equal fingerprints, so a repeat is never missed; two different grids would only be mistaken for a repeat if their hashes collided, which is too unlikely to matter. Only the current generation is stored, so the cycle cannot be found to start before the generation where `final` was called. For example, a blinker advanced to generation 1 settles at generation 1, even though generation 0 was already part of its cycle.
 
@@ -243,17 +233,15 @@ flowchart LR
 
 ### The request pipeline
 
-```mermaid
-flowchart LR
-    request(["Request"]) --> log["Request log: one line with status and duration"]
-    log --> errors["Error handling: problem details with a trace id; 503 when the database cannot be reached"]
-    errors --> timeout["Timeout: 504 after 10 s"]
-    timeout --> limit["Simulation limit: 503 beyond 8 at once"]
-    limit --> unreadable["Unreadable requests: a 400 that says what is wrong"]
-    unreadable --> endpoint["Endpoint"]
-```
+A request passes through these steps in order before it reaches its endpoint:
 
-The request log is outermost, so it records the final status and the full duration. Error handling wraps everything inside it, so a timeout or a rejection also gets a problem body. The simulation limit applies only to `next`, `ahead` and `final`. A request the framework cannot read, such as malformed JSON, is answered just before the endpoint, so a client's mistake never reaches the error log.
+1. **Request log:** one line with the status and duration.
+2. **Error handling:** problem details with a trace id, and 503 when the database cannot be reached.
+3. **Timeout:** 504 after 10 s.
+4. **Simulation limit:** 503 beyond 8 at once, for `next`, `ahead` and `final` only.
+5. **Unreadable requests:** a 400 that says what is wrong.
+
+The request log is outermost, so it records the final status and the full duration. Error handling wraps everything inside it, so a timeout or a rejection also gets a problem body. A request the framework cannot read, such as malformed JSON, is answered just before the endpoint, so a client's mistake never reaches the error log.
 
 ### Changing a board
 
@@ -284,15 +272,7 @@ Changes to the same board happen one at a time, and none is lost. Changes to oth
 
 ### Running with Docker
 
-```mermaid
-flowchart LR
-    user(["Browser or curl"]) -->|"localhost:8080"| api["api container: ASP.NET Core 8, non-root"]
-    api -->|"postgres:5432"| pg[("postgres container: PostgreSQL 16")]
-    pg --- volume[("postgres-data volume")]
-    dev(["dotnet run or psql"]) -.->|"localhost:5432"| pg
-```
-
-Compose starts the API only after PostgreSQL reports healthy, and restarts either container if it crashes (but not after `docker stop` or `docker kill`). Both ports are published on the loopback interface only.
+Compose runs two containers: the API (ASP.NET Core 8, as a non-root user) on `localhost:8080`, and PostgreSQL 16 on `localhost:5432`, with its data in the `postgres-data` volume. `dotnet run` and `psql` on the host can use the same database. Compose starts the API only after PostgreSQL reports healthy, and restarts either container if it crashes (but not after `docker stop` or `docker kill`). Both ports are published on the loopback interface only.
 
 ## Design decisions
 
